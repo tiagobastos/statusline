@@ -140,6 +140,11 @@ var ansiRe = regexp.MustCompile(`\033\[[0-9;]*m`)
 // --- Main ---
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--demo" {
+		renderDemo()
+		return
+	}
+
 	data, _ := io.ReadAll(os.Stdin)
 	if len(data) == 0 {
 		data = []byte("{}")
@@ -174,113 +179,7 @@ func main() {
 	gitInfo := <-gitCh
 	windowInfo := <-winCh
 
-	pwdDisplay := tildeCollapsePath(cwd)
-
-	// Model short name
-	modelShort := strings.TrimPrefix(modelName, "Claude ")
-	modelShort = stripTrailingVersion(modelShort)
-	modelShort = strings.ToLower(modelShort)
-
-	// Effort bars
-	effortBars := buildEffortBars(effort)
-	modelLabel := modelShort + " " + effortBars
-
-	modelBg := modelPillBg(modelName)
-
-	// Bar colors
-	winBarColor := fgWinGreen
-	if windowInfo.Pct >= 75 {
-		winBarColor = fgWinRed
-	} else if windowInfo.Pct >= 50 {
-		winBarColor = fgWinAmber
-	}
-
-	ctxBarColor := fgBarGreen
-	if ctxPct >= 75 {
-		ctxBarColor = fgBarRed
-	} else if ctxPct >= 50 {
-		ctxBarColor = fgBarYellow
-	}
-
-	winIcon := "⧉"
-	if windowInfo.Pct >= 75 {
-		winIcon = "●"
-	} else if windowInfo.Pct >= 50 {
-		winIcon = "◕"
-	} else if windowInfo.Pct >= 25 {
-		winIcon = "◑"
-	}
-
-	ctxIcon := "◔"
-	if ctxPct >= 75 {
-		ctxIcon = "●"
-	} else if ctxPct >= 50 {
-		ctxIcon = "◕"
-	} else if ctxPct >= 25 {
-		ctxIcon = "◑"
-	}
-	if sess.Compacted {
-		ctxIcon = "↻"
-	}
-
-	// Bar labels
-	winLabel := fmt.Sprintf("%d%%", windowInfo.Pct)
-	winTimeLabel := windowInfo.TimeLeft
-	ctxLabel := fmt.Sprintf("%d%%", ctxPct)
-
-	// Fixed widths for bar math
-	winFixed := 1 + 1 + 1 + len(winLabel) + 1 + len(winTimeLabel)
-	ctxFixed := 1 + 1 + 1 + len(ctxLabel)
-	totalFixed := winFixed + ctxFixed + 3
-
-	targetW := terminalWidth()
-
-	// Render
-	if gitInfo != nil {
-		l1Pills := pill(modelBg, modelLabel)
-		l1PillsLen := visibleLen(l1Pills)
-		bars := fgDkGray + "⋮" + rst + " " + buildBars(targetW, l1PillsLen, totalFixed, windowInfo.Pct, ctxPct, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel)
-		fmt.Print(alignedLine(l1Pills, bars, targetW))
-
-		pwdLabel := pwdDisplay
-		branchIcon := "⎇  "
-		if gitInfo.WorktreeOf != "" {
-			pwdLabel = "~/" + gitInfo.WorktreeOf + "/../" + filepath.Base(cwd)
-			branchIcon = "⎇⎇ "
-		}
-		l2Left := pill(bgGreen, pwdLabel) + " " + pill(bgPurple, branchIcon+gitInfo.Branch)
-		var l2RightParts []string
-		if gitInfo.Age != "" {
-			l2RightParts = append(l2RightParts, pill(bgDark, "⏱ "+gitInfo.Age))
-		}
-		if gitInfo.ModCount > 0 {
-			l2RightParts = append(l2RightParts, pill(bgAmber, fmt.Sprintf("✎ %d", gitInfo.ModCount)))
-		}
-		if gitInfo.StashCount > 0 {
-			l2RightParts = append(l2RightParts, pill(bgAmber, fmt.Sprintf("⚑ %d", gitInfo.StashCount)))
-		}
-		if gitInfo.Sync != "" && gitInfo.Sync != "=" {
-			l2RightParts = append(l2RightParts, pill(bgDark, "⇅ "+gitInfo.Sync))
-		}
-		l2Right := strings.Join(l2RightParts, " ")
-
-		// Separator spans the wider of targetW and line 2's natural width
-		sepW := targetW
-		if l2W := visibleLen(l2Left) + visibleLen(l2Right) + 1; l2W > sepW {
-			sepW = l2W
-		}
-		fmt.Print(separator(sepW))
-		fmt.Print(alignedLine(l2Left, l2Right, targetW))
-		fmt.Print(rst + "\n")
-
-	} else {
-		l1Pills := pill(bgGreen, pwdDisplay) + " " + pill(modelBg, modelLabel)
-		l1PillsLen := visibleLen(l1Pills)
-		bars := fgDkGray + "⋮" + rst + " " + buildBars(targetW, l1PillsLen, totalFixed, windowInfo.Pct, ctxPct, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel)
-		fmt.Print(alignedLine(l1Pills, bars, targetW))
-		fmt.Print(rst + "\n")
-	}
-
+	renderStatusLine(gitInfo, windowInfo, ctxPct, effort, modelName, cwd, sess.Compacted)
 	bgWg.Wait()
 }
 
@@ -783,4 +682,148 @@ func tildeCollapsePath(path string) string {
 		return "~" + path[len(home):]
 	}
 	return path
+}
+
+// --- Rendering ---
+
+func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, modelName, cwd string, compacted bool) {
+	targetW := terminalWidth()
+	pwdDisplay := tildeCollapsePath(cwd)
+
+	modelShort := strings.TrimPrefix(modelName, "Claude ")
+	modelShort = stripTrailingVersion(modelShort)
+	modelShort = strings.ToLower(modelShort)
+
+	effortBars := buildEffortBars(effort)
+	modelLabel := modelShort + " " + effortBars
+	modelBg := modelPillBg(modelName)
+
+	winBarColor := fgWinGreen
+	if win.Pct >= 75 {
+		winBarColor = fgWinRed
+	} else if win.Pct >= 50 {
+		winBarColor = fgWinAmber
+	}
+
+	ctxBarColor := fgBarGreen
+	if ctxPct >= 75 {
+		ctxBarColor = fgBarRed
+	} else if ctxPct >= 50 {
+		ctxBarColor = fgBarYellow
+	}
+
+	winIcon := "⧉"
+	if win.Pct >= 75 {
+		winIcon = "●"
+	} else if win.Pct >= 50 {
+		winIcon = "◕"
+	} else if win.Pct >= 25 {
+		winIcon = "◑"
+	}
+
+	ctxIcon := "◔"
+	if ctxPct >= 75 {
+		ctxIcon = "●"
+	} else if ctxPct >= 50 {
+		ctxIcon = "◕"
+	} else if ctxPct >= 25 {
+		ctxIcon = "◑"
+	}
+	if compacted {
+		ctxIcon = "↻"
+	}
+
+	winLabel := fmt.Sprintf("%d%%", win.Pct)
+	winTimeLabel := win.TimeLeft
+	ctxLabel := fmt.Sprintf("%d%%", ctxPct)
+
+	winFixed := 1 + 1 + 1 + len(winLabel) + 1 + len(winTimeLabel)
+	ctxFixed := 1 + 1 + 1 + len(ctxLabel)
+	totalFixed := winFixed + ctxFixed + 3
+
+	if gitInfo != nil {
+		l1Pills := pill(modelBg, modelLabel)
+		l1PillsLen := visibleLen(l1Pills)
+		bars := fgDkGray + "⋮" + rst + " " + buildBars(targetW, l1PillsLen, totalFixed, win.Pct, ctxPct, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel)
+		fmt.Print(alignedLine(l1Pills, bars, targetW))
+
+		pwdLabel := pwdDisplay
+		branchIcon := "⎇  "
+		if gitInfo.WorktreeOf != "" {
+			pwdLabel = "~/" + gitInfo.WorktreeOf + "/../" + filepath.Base(cwd)
+			branchIcon = "⎇⎇ "
+		}
+		l2Left := pill(bgGreen, pwdLabel) + " " + pill(bgPurple, branchIcon+gitInfo.Branch)
+		var l2RightParts []string
+		if gitInfo.Age != "" {
+			l2RightParts = append(l2RightParts, pill(bgDark, "⏱ "+gitInfo.Age))
+		}
+		if gitInfo.ModCount > 0 {
+			l2RightParts = append(l2RightParts, pill(bgAmber, fmt.Sprintf("✎ %d", gitInfo.ModCount)))
+		}
+		if gitInfo.StashCount > 0 {
+			l2RightParts = append(l2RightParts, pill(bgAmber, fmt.Sprintf("⚑ %d", gitInfo.StashCount)))
+		}
+		if gitInfo.Sync != "" && gitInfo.Sync != "=" {
+			l2RightParts = append(l2RightParts, pill(bgDark, "⇅ "+gitInfo.Sync))
+		}
+		l2Right := strings.Join(l2RightParts, " ")
+
+		sepW := targetW
+		if l2W := visibleLen(l2Left) + visibleLen(l2Right) + 1; l2W > sepW {
+			sepW = l2W
+		}
+		fmt.Print(separator(sepW))
+		fmt.Print(alignedLine(l2Left, l2Right, targetW))
+		fmt.Print(rst + "\n")
+	} else {
+		l1Pills := pill(bgGreen, pwdDisplay) + " " + pill(modelBg, modelLabel)
+		l1PillsLen := visibleLen(l1Pills)
+		bars := fgDkGray + "⋮" + rst + " " + buildBars(targetW, l1PillsLen, totalFixed, win.Pct, ctxPct, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel)
+		fmt.Print(alignedLine(l1Pills, bars, targetW))
+		fmt.Print(rst + "\n")
+	}
+}
+
+// --- Demo mode ---
+
+func renderDemo() {
+	home, _ := os.UserHomeDir()
+	cwd := home + "/code/my-project"
+	model := "Claude Sonnet 4.6"
+	mockWin := WindowInfo{Pct: 35, TimeLeft: "2h 15m left"}
+	mockGit := &GitInfo{Branch: "main", ModCount: 3, Sync: "↑2", Age: "5m", StashCount: 1}
+
+	section := func(title string) {
+		fmt.Println()
+		fmt.Println(fgGray + "  " + title + rst)
+		fmt.Println()
+	}
+
+	section("── git layout — effort levels ─────────────────────────────────────")
+	for _, eff := range []string{"low", "medium", "high", "xhigh", "maximum"} {
+		fmt.Println(fgDkGray + "  " + eff + rst)
+		renderStatusLine(mockGit, mockWin, 45, eff, model, cwd, false)
+	}
+
+	section("── non-git layout ──────────────────────────────────────────────────")
+	renderStatusLine(nil, mockWin, 45, "medium", model, cwd, false)
+
+	section("── context window levels (medium effort) ───────────────────────────")
+	for _, pct := range []int{15, 50, 82, 95} {
+		fmt.Printf(fgDkGray+"  ctx %d%%\n"+rst, pct)
+		renderStatusLine(mockGit, mockWin, pct, "medium", model, cwd, pct >= 90)
+	}
+
+	section("── rate-limit window levels (medium effort) ────────────────────────")
+	for _, wpct := range []int{0, 40, 75, 90} {
+		tl := fmt.Sprintf("%dm left", 270-wpct*2)
+		if wpct == 0 {
+			tl = "idle"
+		}
+		fmt.Printf(fgDkGray+"  window %d%%\n"+rst, wpct)
+		renderStatusLine(mockGit, WindowInfo{Pct: wpct, TimeLeft: tl}, 45, "medium", model, cwd, false)
+	}
+
+	fmt.Println()
 }
