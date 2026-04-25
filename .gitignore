@@ -1,4 +1,5 @@
 statusline
 preview/
 docs/plans/
+dist/
 .DS_Store
