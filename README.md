@@ -2,7 +2,7 @@
 
 Rich status line for [Claude Code](https://claude.ai/code), built in Go. Zero dependencies.
 
-![git layout showing all effort levels](assets/demo-git-effort.jpeg)
+![statusline](assets/hero.jpeg)
 
 Displays model name, effort level, context window usage, rate-limit bar, git branch, stash count, and working directory — rendered as a compact ANSI status line on each turn.
 
