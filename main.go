@@ -600,7 +600,7 @@ func separator(width int) string {
 	return fgDkGray + strings.Repeat("─", width) + rst + "\n"
 }
 
-func buildBars(targetW, leftPillsLen, totalFixed, windowPct, ctxPct int, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel string) string {
+func buildBars(targetW, leftPillsLen, totalFixed, windowPct, ctxPct int, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel string, compactThreshold int) string {
 	barsTotal := targetW - leftPillsLen - 2 - totalFixed
 	if barsTotal < 10 {
 		barsTotal = 10
@@ -630,7 +630,7 @@ func buildBars(targetW, leftPillsLen, totalFixed, windowPct, ctxPct int, winBarC
 	b.WriteString(" " + fgDkGray + "⋮" + rst + " ")
 
 	ctxFilled := ctxBarW * ctxPct / 100
-	thresholdPos := ctxBarW * autoCompactThreshold / 100
+	thresholdPos := ctxBarW * compactThreshold / 100
 
 	b.WriteString(ctxBarColor + ctxIcon + rst + " ")
 	for i := 0; i < ctxBarW; i++ {
@@ -741,10 +741,18 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 	ctxFixed := 1 + 1 + 1 + len(ctxLabel)
 	totalFixed := winFixed + ctxFixed + 3
 
+	compactThreshold := autoCompactThreshold
+	if v := os.Getenv("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"); v != "" {
+		var n int
+		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n >= 1 && n <= 100 {
+			compactThreshold = n
+		}
+	}
+
 	if gitInfo != nil {
 		l1Pills := pill(modelBg, modelLabel)
 		l1PillsLen := visibleLen(l1Pills)
-		bars := fgDkGray + "⋮" + rst + " " + buildBars(targetW, l1PillsLen, totalFixed, win.Pct, ctxPct, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel)
+		bars := fgDkGray + "⋮" + rst + " " + buildBars(targetW, l1PillsLen, totalFixed, win.Pct, ctxPct, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel, compactThreshold)
 		fmt.Print(alignedLine(l1Pills, bars, targetW))
 
 		pwdLabel := pwdDisplay
@@ -779,7 +787,7 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 	} else {
 		l1Pills := pill(bgGreen, pwdDisplay) + " " + pill(modelBg, modelLabel)
 		l1PillsLen := visibleLen(l1Pills)
-		bars := fgDkGray + "⋮" + rst + " " + buildBars(targetW, l1PillsLen, totalFixed, win.Pct, ctxPct, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel)
+		bars := fgDkGray + "⋮" + rst + " " + buildBars(targetW, l1PillsLen, totalFixed, win.Pct, ctxPct, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel, compactThreshold)
 		fmt.Print(alignedLine(l1Pills, bars, targetW))
 		fmt.Print(rst + "\n")
 	}
