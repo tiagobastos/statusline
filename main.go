@@ -68,9 +68,9 @@ const (
 	capRight = "\xee\x82\xb4"
 
 	// Cache
-	cachePath    = "/tmp/claude-statusline-usage.json"
-	cacheTTL     = 60 // seconds
-	gitCacheTTL  = 10 // seconds — cache outlasts most Claude turns; protects burst renders
+	cachePath   = "/tmp/claude-statusline-usage.json"
+	cacheTTL    = 60 // seconds
+	gitCacheTTL = 10 // seconds — cache outlasts most Claude turns; protects burst renders
 
 	// Git call timeout
 	gitTimeout = 2 * time.Second
@@ -79,14 +79,13 @@ const (
 // --- Input types ---
 
 type Input struct {
-	Model         json.RawMessage `json:"model"`
-	CWD           string          `json:"cwd"`
-	EffortLevel   string          `json:"effortLevel"`
+	Model       json.RawMessage `json:"model"`
+	CWD         string          `json:"cwd"`
+	EffortLevel string          `json:"effortLevel"`
 
-	ContextWindow CtxInfo         `json:"context_window"`
-	Workspace     WorkspaceInfo   `json:"workspace"`
+	ContextWindow CtxInfo       `json:"context_window"`
+	Workspace     WorkspaceInfo `json:"workspace"`
 }
-
 
 type CtxInfo struct {
 	UsedPercentage    int `json:"used_percentage"`
@@ -200,7 +199,6 @@ func modelPillBg(name string) string {
 	}
 }
 
-
 // --- Terminal width ---
 
 func terminalWidth() int {
@@ -261,7 +259,6 @@ func getSessionData(cwd string, ctxPct int) SessionData {
 
 	return sess
 }
-
 
 // --- Data gathering ---
 
@@ -434,10 +431,10 @@ func fetchGitInfo(cwd string) *GitInfo {
 	type strResult struct{ val string }
 	type intResult struct{ val int }
 
-	statusCh  := make(chan statusRes, 1)
+	statusCh := make(chan statusRes, 1)
 	worktreeCh := make(chan strResult, 1)
-	ageCh      := make(chan strResult, 1)
-	stashCh    := make(chan intResult, 1)
+	ageCh := make(chan strResult, 1)
+	stashCh := make(chan intResult, 1)
 
 	go func() {
 		out, err := runGit(ctx, cwd, "status", "--porcelain=v2", "--branch")
@@ -496,13 +493,13 @@ func fetchGitInfo(cwd string) *GitInfo {
 		}
 	}()
 
-	st             := (<-statusCh).val
-	info.Branch     = st.branch
+	st := (<-statusCh).val
+	info.Branch = st.branch
 	info.WorktreeOf = (<-worktreeCh).val
-	info.ModCount   = st.modCount
-	ahead           := st.ahead
-	behind          := st.behind
-	info.Age        = (<-ageCh).val
+	info.ModCount = st.modCount
+	ahead := st.ahead
+	behind := st.behind
+	info.Age = (<-ageCh).val
 	info.StashCount = (<-stashCh).val
 
 	if ahead > 0 && behind > 0 {
