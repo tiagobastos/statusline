@@ -68,9 +68,9 @@ const (
 	capRight = "\xee\x82\xb4"
 
 	// Cache
-	cachePath    = "/tmp/claude-statusline-usage.json"
-	cacheTTL     = 60 // seconds
-	gitCacheTTL  = 3  // seconds — short enough to feel live, long enough to absorb rapid renders
+	cachePath   = "/tmp/claude-statusline-usage.json"
+	cacheTTL    = 60 // seconds
+	gitCacheTTL = 10 // seconds — cache outlasts most Claude turns; protects burst renders
 
 	// Git call timeout
 	gitTimeout = 2 * time.Second
@@ -79,14 +79,13 @@ const (
 // --- Input types ---
 
 type Input struct {
-	Model         json.RawMessage `json:"model"`
-	CWD           string          `json:"cwd"`
-	EffortLevel   string          `json:"effortLevel"`
+	Model       json.RawMessage `json:"model"`
+	CWD         string          `json:"cwd"`
+	EffortLevel string          `json:"effortLevel"`
 
-	ContextWindow CtxInfo         `json:"context_window"`
-	Workspace     WorkspaceInfo   `json:"workspace"`
+	ContextWindow CtxInfo       `json:"context_window"`
+	Workspace     WorkspaceInfo `json:"workspace"`
 }
-
 
 type CtxInfo struct {
 	UsedPercentage    int `json:"used_percentage"`
@@ -200,7 +199,6 @@ func modelPillBg(name string) string {
 	}
 }
 
-
 // --- Terminal width ---
 
 func terminalWidth() int {
@@ -261,7 +259,6 @@ func getSessionData(cwd string, ctxPct int) SessionData {
 
 	return sess
 }
-
 
 // --- Data gathering ---
 
@@ -362,6 +359,31 @@ type GitCache struct {
 	CachedAt int64    `json:"cached_at"`
 }
 
+type statusResult struct {
+	branch   string
+	modCount int
+	ahead    int
+	behind   int
+}
+
+func parsePorcelainV2Branch(out []byte) statusResult {
+	r := statusResult{branch: "detached"}
+	for _, line := range strings.Split(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(line, "# branch.head "):
+			b := strings.TrimPrefix(line, "# branch.head ")
+			if b != "(detached)" {
+				r.branch = b
+			}
+		case strings.HasPrefix(line, "# branch.ab "):
+			fmt.Sscanf(strings.TrimPrefix(line, "# branch.ab "), "+%d -%d", &r.ahead, &r.behind)
+		case len(line) > 0 && line[0] != '#':
+			r.modCount++
+		}
+	}
+	return r
+}
+
 func runGit(ctx context.Context, cwd string, args ...string) ([]byte, error) {
 	fullArgs := append([]string{"-C", cwd}, args...)
 	cmd := exec.CommandContext(ctx, "git", fullArgs...)
@@ -405,24 +427,22 @@ func fetchGitInfo(cwd string) *GitInfo {
 
 	info := &GitInfo{}
 
+	type statusRes struct{ val statusResult }
 	type strResult struct{ val string }
 	type intResult struct{ val int }
 
-	branchCh := make(chan strResult, 1)
+	statusCh := make(chan statusRes, 1)
 	worktreeCh := make(chan strResult, 1)
-	modCh := make(chan intResult, 1)
-	aheadCh := make(chan intResult, 1)
-	behindCh := make(chan intResult, 1)
 	ageCh := make(chan strResult, 1)
 	stashCh := make(chan intResult, 1)
 
 	go func() {
-		out, err := runGit(ctx, cwd, "branch", "--show-current")
+		out, err := runGit(ctx, cwd, "status", "--porcelain=v2", "--branch")
 		if err != nil {
-			branchCh <- strResult{"detached"}
-		} else {
-			branchCh <- strResult{strings.TrimSpace(string(out))}
+			statusCh <- statusRes{statusResult{branch: "detached"}}
+			return
 		}
+		statusCh <- statusRes{parsePorcelainV2Branch(out)}
 	}()
 
 	go func() {
@@ -438,34 +458,6 @@ func fetchGitInfo(cwd string) *GitInfo {
 			return
 		}
 		worktreeCh <- strResult{filepath.Base(gitDir[:idx])}
-	}()
-
-	go func() {
-		out, _ := runGit(ctx, cwd, "status", "--porcelain")
-		t := strings.TrimSpace(string(out))
-		if t == "" {
-			modCh <- intResult{0}
-		} else {
-			modCh <- intResult{len(strings.Split(t, "\n"))}
-		}
-	}()
-
-	go func() {
-		out, err := runGit(ctx, cwd, "rev-list", "--count", "@{upstream}..HEAD")
-		n := 0
-		if err == nil {
-			fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &n)
-		}
-		aheadCh <- intResult{n}
-	}()
-
-	go func() {
-		out, err := runGit(ctx, cwd, "rev-list", "--count", "HEAD..@{upstream}")
-		n := 0
-		if err == nil {
-			fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &n)
-		}
-		behindCh <- intResult{n}
 	}()
 
 	go func() {
@@ -501,11 +493,12 @@ func fetchGitInfo(cwd string) *GitInfo {
 		}
 	}()
 
-	info.Branch = (<-branchCh).val
+	st := (<-statusCh).val
+	info.Branch = st.branch
 	info.WorktreeOf = (<-worktreeCh).val
-	info.ModCount = (<-modCh).val
-	ahead := (<-aheadCh).val
-	behind := (<-behindCh).val
+	info.ModCount = st.modCount
+	ahead := st.ahead
+	behind := st.behind
 	info.Age = (<-ageCh).val
 	info.StashCount = (<-stashCh).val
 
