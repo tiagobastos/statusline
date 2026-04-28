@@ -430,24 +430,22 @@ func fetchGitInfo(cwd string) *GitInfo {
 
 	info := &GitInfo{}
 
+	type statusRes struct{ val statusResult }
 	type strResult struct{ val string }
 	type intResult struct{ val int }
 
-	branchCh := make(chan strResult, 1)
+	statusCh  := make(chan statusRes, 1)
 	worktreeCh := make(chan strResult, 1)
-	modCh := make(chan intResult, 1)
-	aheadCh := make(chan intResult, 1)
-	behindCh := make(chan intResult, 1)
-	ageCh := make(chan strResult, 1)
-	stashCh := make(chan intResult, 1)
+	ageCh      := make(chan strResult, 1)
+	stashCh    := make(chan intResult, 1)
 
 	go func() {
-		out, err := runGit(ctx, cwd, "branch", "--show-current")
+		out, err := runGit(ctx, cwd, "status", "--porcelain=v2", "--branch")
 		if err != nil {
-			branchCh <- strResult{"detached"}
-		} else {
-			branchCh <- strResult{strings.TrimSpace(string(out))}
+			statusCh <- statusRes{statusResult{branch: "detached"}}
+			return
 		}
+		statusCh <- statusRes{parsePorcelainV2Branch(out)}
 	}()
 
 	go func() {
@@ -463,34 +461,6 @@ func fetchGitInfo(cwd string) *GitInfo {
 			return
 		}
 		worktreeCh <- strResult{filepath.Base(gitDir[:idx])}
-	}()
-
-	go func() {
-		out, _ := runGit(ctx, cwd, "status", "--porcelain")
-		t := strings.TrimSpace(string(out))
-		if t == "" {
-			modCh <- intResult{0}
-		} else {
-			modCh <- intResult{len(strings.Split(t, "\n"))}
-		}
-	}()
-
-	go func() {
-		out, err := runGit(ctx, cwd, "rev-list", "--count", "@{upstream}..HEAD")
-		n := 0
-		if err == nil {
-			fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &n)
-		}
-		aheadCh <- intResult{n}
-	}()
-
-	go func() {
-		out, err := runGit(ctx, cwd, "rev-list", "--count", "HEAD..@{upstream}")
-		n := 0
-		if err == nil {
-			fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &n)
-		}
-		behindCh <- intResult{n}
 	}()
 
 	go func() {
@@ -526,12 +496,13 @@ func fetchGitInfo(cwd string) *GitInfo {
 		}
 	}()
 
-	info.Branch = (<-branchCh).val
+	st             := (<-statusCh).val
+	info.Branch     = st.branch
 	info.WorktreeOf = (<-worktreeCh).val
-	info.ModCount = (<-modCh).val
-	ahead := (<-aheadCh).val
-	behind := (<-behindCh).val
-	info.Age = (<-ageCh).val
+	info.ModCount   = st.modCount
+	ahead           := st.ahead
+	behind          := st.behind
+	info.Age        = (<-ageCh).val
 	info.StashCount = (<-stashCh).val
 
 	if ahead > 0 && behind > 0 {
