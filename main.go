@@ -68,8 +68,9 @@ const (
 	capRight = "\xee\x82\xb4"
 
 	// Cache
-	cachePath = "/tmp/claude-statusline-usage.json"
-	cacheTTL  = 60 // seconds
+	cachePath    = "/tmp/claude-statusline-usage.json"
+	cacheTTL     = 60 // seconds
+	gitCacheTTL  = 3  // seconds — short enough to feel live, long enough to absorb rapid renders
 
 	// Git call timeout
 	gitTimeout = 2 * time.Second
@@ -350,12 +351,48 @@ func readEffortLevel(cwd string, stdinEffort string) string {
 
 // --- Git info ---
 
+func gitCachePath(cwd string) string {
+	h := fnv.New32a()
+	h.Write([]byte(cwd))
+	return fmt.Sprintf("/tmp/claude-statusline-git-%08x.json", h.Sum32())
+}
+
+type GitCache struct {
+	Info     *GitInfo `json:"info"`
+	CachedAt int64    `json:"cached_at"`
+}
+
 func runGit(ctx context.Context, cwd string, args ...string) ([]byte, error) {
 	fullArgs := append([]string{"-C", cwd}, args...)
-	return exec.CommandContext(ctx, "git", fullArgs...).Output()
+	cmd := exec.CommandContext(ctx, "git", fullArgs...)
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	return cmd.Output()
 }
 
 func getGitInfo(cwd string) *GitInfo {
+	// Short-TTL cache: absorbs rapid successive renders without re-spawning 8 git processes.
+	cachefile := gitCachePath(cwd)
+	if info, err := os.Stat(cachefile); err == nil {
+		if time.Now().Unix()-info.ModTime().Unix() < gitCacheTTL {
+			if data, err := os.ReadFile(cachefile); err == nil {
+				var gc GitCache
+				if json.Unmarshal(data, &gc) == nil {
+					return gc.Info
+				}
+			}
+		}
+	}
+
+	result := fetchGitInfo(cwd)
+
+	gc := GitCache{Info: result, CachedAt: time.Now().Unix()}
+	if data, err := json.Marshal(gc); err == nil {
+		os.WriteFile(cachefile, data, 0644)
+	}
+	return result
+}
+
+func fetchGitInfo(cwd string) *GitInfo {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
 
