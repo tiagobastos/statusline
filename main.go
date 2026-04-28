@@ -70,7 +70,7 @@ const (
 	// Cache
 	cachePath    = "/tmp/claude-statusline-usage.json"
 	cacheTTL     = 60 // seconds
-	gitCacheTTL  = 3  // seconds — short enough to feel live, long enough to absorb rapid renders
+	gitCacheTTL  = 10 // seconds — cache outlasts most Claude turns; protects burst renders
 
 	// Git call timeout
 	gitTimeout = 2 * time.Second
@@ -360,6 +360,31 @@ func gitCachePath(cwd string) string {
 type GitCache struct {
 	Info     *GitInfo `json:"info"`
 	CachedAt int64    `json:"cached_at"`
+}
+
+type statusResult struct {
+	branch   string
+	modCount int
+	ahead    int
+	behind   int
+}
+
+func parsePorcelainV2Branch(out []byte) statusResult {
+	r := statusResult{branch: "detached"}
+	for _, line := range strings.Split(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(line, "# branch.head "):
+			b := strings.TrimPrefix(line, "# branch.head ")
+			if b != "(detached)" {
+				r.branch = b
+			}
+		case strings.HasPrefix(line, "# branch.ab "):
+			fmt.Sscanf(strings.TrimPrefix(line, "# branch.ab "), "+%d -%d", &r.ahead, &r.behind)
+		case len(line) > 0 && line[0] != '#':
+			r.modCount++
+		}
+	}
+	return r
 }
 
 func runGit(ctx context.Context, cwd string, args ...string) ([]byte, error) {
