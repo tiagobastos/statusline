@@ -570,32 +570,30 @@ func getWindowInfo() WindowInfo {
 }
 
 func readAccessToken() string {
-	// Linux: read from ~/.claude/.credentials.json
+	type claudeCredentials struct {
+		ClaudeAiOauth struct {
+			AccessToken string `json:"accessToken"`
+		} `json:"claudeAiOauth"`
+	}
+
+	// Prefer the credentials file; Claude Code writes it on Linux and some macOS configurations.
 	home, err := os.UserHomeDir()
 	if err == nil {
 		data, err := os.ReadFile(filepath.Join(home, ".claude", ".credentials.json"))
 		if err == nil {
-			var creds struct {
-				ClaudeAiOauth struct {
-					AccessToken string `json:"accessToken"`
-				} `json:"claudeAiOauth"`
-			}
+			var creds claudeCredentials
 			if json.Unmarshal(data, &creds) == nil && creds.ClaudeAiOauth.AccessToken != "" {
 				return creds.ClaudeAiOauth.AccessToken
 			}
 		}
 	}
-	// macOS: read from keychain
+	// Fall back to the macOS keychain.
 	out, err := exec.Command("security", "find-generic-password",
 		"-s", "Claude Code-credentials", "-w").Output()
 	if err != nil {
 		return ""
 	}
-	var creds struct {
-		ClaudeAiOauth struct {
-			AccessToken string `json:"accessToken"`
-		} `json:"claudeAiOauth"`
-	}
+	var creds claudeCredentials
 	if json.Unmarshal(out, &creds) != nil {
 		return ""
 	}
