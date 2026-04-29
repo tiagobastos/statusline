@@ -8,7 +8,7 @@ Displays model name, effort level, context window usage, rate-limit bar, git bra
 
 ## Installation
 
-### Option A: Download binary (recommended)
+### Option A: Download binary (macOS only)
 
 Download the latest release for macOS from [Releases](https://github.com/tiagobastos/statusline/releases) and place the binary at `~/.claude/statusline/statusline`.
 
@@ -23,13 +23,13 @@ chmod +x ~/.claude/statusline/statusline
 
 For macOS Intel, use `statusline-darwin-amd64` instead.
 
-### Option B: Build from source
+### Option B: Build from source (macOS and Linux)
 
 Requires Go 1.23+.
 
 ```bash
-go install github.com/tiagobastos/statusline@latest
-mv "$(go env GOPATH)/bin/statusline" ~/.claude/statusline/statusline
+mkdir -p ~/.claude/statusline
+go build -o ~/.claude/statusline/statusline github.com/tiagobastos/statusline
 ```
 
 ## Updating
@@ -96,6 +96,8 @@ The right bar tracks context usage. Color shifts green → yellow → red as it 
 The left bar tracks your 5-hour usage window. Color and icon shift as you approach the limit.
 
 ![rate-limit window levels](assets/demo-ratelimit-levels.jpeg)
+
+On **macOS** the OAuth token is read from the system keychain. On **Linux** it is read from `~/.claude/.credentials.json`, which Claude Code writes automatically.
 
 ## License
 
