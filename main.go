@@ -569,11 +569,27 @@ func getWindowInfo() WindowInfo {
 	return result
 }
 
-func fetchAndCacheUsage(usage *UsageData) bool {
+func readAccessToken() string {
+	// Linux: read from ~/.claude/.credentials.json
+	home, err := os.UserHomeDir()
+	if err == nil {
+		data, err := os.ReadFile(filepath.Join(home, ".claude", ".credentials.json"))
+		if err == nil {
+			var creds struct {
+				ClaudeAiOauth struct {
+					AccessToken string `json:"accessToken"`
+				} `json:"claudeAiOauth"`
+			}
+			if json.Unmarshal(data, &creds) == nil && creds.ClaudeAiOauth.AccessToken != "" {
+				return creds.ClaudeAiOauth.AccessToken
+			}
+		}
+	}
+	// macOS: read from keychain
 	out, err := exec.Command("security", "find-generic-password",
 		"-s", "Claude Code-credentials", "-w").Output()
 	if err != nil {
-		return false
+		return ""
 	}
 	var creds struct {
 		ClaudeAiOauth struct {
@@ -581,6 +597,14 @@ func fetchAndCacheUsage(usage *UsageData) bool {
 		} `json:"claudeAiOauth"`
 	}
 	if json.Unmarshal(out, &creds) != nil {
+		return ""
+	}
+	return creds.ClaudeAiOauth.AccessToken
+}
+
+func fetchAndCacheUsage(usage *UsageData) bool {
+	token := readAccessToken()
+	if token == "" {
 		return false
 	}
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -588,7 +612,7 @@ func fetchAndCacheUsage(usage *UsageData) bool {
 	if err != nil {
 		return false
 	}
-	req.Header.Set("Authorization", "Bearer "+creds.ClaudeAiOauth.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
 	req.Header.Set("Accept", "application/json")
 	resp, err := client.Do(req)
