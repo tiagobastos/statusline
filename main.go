@@ -579,11 +579,14 @@ func readAccessToken() string {
 	// Prefer the credentials file; Claude Code writes it on Linux and some macOS configurations.
 	home, err := os.UserHomeDir()
 	if err == nil {
-		data, err := os.ReadFile(filepath.Join(home, ".claude", ".credentials.json"))
-		if err == nil {
-			var creds claudeCredentials
-			if json.Unmarshal(data, &creds) == nil && creds.ClaudeAiOauth.AccessToken != "" {
-				return creds.ClaudeAiOauth.AccessToken
+		credPath := filepath.Join(home, ".claude", ".credentials.json")
+		if info, err := os.Stat(credPath); err == nil && info.Mode().Perm()&0o077 == 0 {
+			data, err := os.ReadFile(credPath)
+			if err == nil {
+				var creds claudeCredentials
+				if json.Unmarshal(data, &creds) == nil && creds.ClaudeAiOauth.AccessToken != "" {
+					return creds.ClaudeAiOauth.AccessToken
+				}
 			}
 		}
 	}
