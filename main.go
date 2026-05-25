@@ -739,6 +739,24 @@ func tildeCollapsePath(path string) string {
 	return path
 }
 
+// truncatePath drops leading path components until the result fits within
+// maxRunes, prefixing with "…/". Falls back to a hard left-truncation when
+// even the last segment is too long.
+func truncatePath(path string, maxRunes int) string {
+	runes := []rune(path)
+	if len(runes) <= maxRunes {
+		return path
+	}
+	parts := strings.Split(path, "/")
+	for i := 1; i < len(parts); i++ {
+		candidate := "…/" + strings.Join(parts[i:], "/")
+		if utf8.RuneCountInString(candidate) <= maxRunes {
+			return candidate
+		}
+	}
+	return "…" + string(runes[len(runes)-(maxRunes-1):])
+}
+
 // --- Rendering ---
 
 func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, modelName, cwd string, compacted bool) {
@@ -813,9 +831,14 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 		pwdLabel := pwdDisplay
 		branchIcon := "⎇  "
 		if gitInfo.WorktreeOf != "" {
-			pwdLabel = "~/" + gitInfo.WorktreeOf + "/../" + filepath.Base(cwd)
+			pwdLabel = "~/" + gitInfo.WorktreeOf
 			branchIcon = "⎇⎇ "
 		}
+		maxPwdRunes := targetW * 35 / 100
+		if maxPwdRunes < 25 {
+			maxPwdRunes = 25
+		}
+		pwdLabel = truncatePath(pwdLabel, maxPwdRunes)
 		l2Left := pill(bgGreen, pwdLabel) + " " + pill(bgPurple, branchIcon+gitInfo.Branch)
 		var l2RightParts []string
 		if gitInfo.Age != "" {
@@ -840,7 +863,11 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 		fmt.Print(alignedLine(l2Left, l2Right, targetW))
 		fmt.Print(rst + "\n")
 	} else {
-		l1Pills := pill(bgGreen, pwdDisplay) + " " + pill(modelBg, modelLabel)
+		maxPwdRunes := targetW * 35 / 100
+		if maxPwdRunes < 25 {
+			maxPwdRunes = 25
+		}
+		l1Pills := pill(bgGreen, truncatePath(pwdDisplay, maxPwdRunes)) + " " + pill(modelBg, modelLabel)
 		l1PillsLen := visibleLen(l1Pills)
 		bars := fgDkGray + "⋮" + rst + " " + buildBars(targetW, l1PillsLen, totalFixed, win.Pct, ctxPct, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel, compactThreshold)
 		fmt.Print(alignedLine(l1Pills, bars, targetW))
@@ -868,6 +895,15 @@ func renderDemo() {
 		fmt.Println(fgDkGray + "  " + eff + rst)
 		renderStatusLine(mockGit, mockWin, 45, eff, model, cwd, false)
 	}
+
+	section("── worktree layout (long branch) ───────────────────────────────────")
+	mockWorktreeGit := &GitInfo{
+		Branch:     "feature-customlocation-meetings",
+		WorktreeOf: "focus-service-ai-assistant",
+		ModCount:   2, Sync: "↑1", Age: "5m",
+	}
+	worktreeCwd := home + "/code/teamleadercrm/focus-service-ai-assistant/.worktrees/feature-customlocation-meetings"
+	renderStatusLine(mockWorktreeGit, WindowInfo{Pct: 0, TimeLeft: "idle"}, 52, "maximum", model, worktreeCwd, false)
 
 	section("── non-git layout ──────────────────────────────────────────────────")
 	renderStatusLine(nil, mockWin, 45, "medium", model, cwd, false)
