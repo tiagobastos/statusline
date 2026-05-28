@@ -647,6 +647,7 @@ func visibleLen(s string) int {
 			'⏱',   // U+23F1 emoji clock — 2 cols in most modern terminals
 			'✎',   // U+270E Dingbat pencil — Ambiguous EAW
 			'✦',   // U+2726 Dingbat star — Ambiguous EAW, used in xhigh effort
+			'▰', '▱', // U+25B0/25B1 effort bar parallelograms — Ambiguous EAW
 			'●', '◕', '◑', '⧉', '◔': // bar/ctx icons — Ambiguous EAW
 			n += 2
 		default:
