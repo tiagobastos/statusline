@@ -201,6 +201,12 @@ func modelPillBg(name string) string {
 
 // --- Terminal width ---
 
+// renderSafetyMargin keeps rendered lines this many columns short of the
+// reported terminal width. visibleLen is exact for this terminal's font, so the
+// margin is a backstop: it absorbs a genuinely wide glyph (e.g. CJK in a path)
+// or an off-by-one in the reported width without wrapping the rightmost label.
+const renderSafetyMargin = 2
+
 func terminalWidth() int {
 	if cols := os.Getenv("COLUMNS"); cols != "" {
 		var w int
@@ -636,26 +642,16 @@ func pill(bg, content string) string {
 	return fgCap + capLeft + bg + fgWhite + bold + " " + content + " " + rst + fgCap + capRight + rst
 }
 
+// visibleLen returns the number of terminal columns a string occupies, after
+// stripping ANSI color codes. The target terminal+font renders every glyph the
+// statusline uses (Nerd Font powerline caps, ctx circles, effort parallelograms,
+// the vertical-ellipsis separator, pill icons) as a single column — verified
+// directly with a cursor-position probe (DSR ESC[6n) — so the column count is
+// just the rune count. Genuine East Asian Wide / Fullwidth code points (e.g.
+// CJK) are the only two-column case; they appear at most in a path or branch
+// name, where the renderSafetyMargin in renderStatusLine absorbs the slack.
 func visibleLen(s string) int {
-	stripped := ansiRe.ReplaceAllString(s, "")
-	n := 0
-	for _, r := range stripped {
-		switch r {
-		case '', '': // Nerd Font powerline caps render as 2 cols in wide-mode terminals
-			n += 2
-		case '⚡',   // U+26A1 East Asian Wide — officially 2 cols
-			'⏱',   // U+23F1 emoji clock — 2 cols in most modern terminals
-			'✎',   // U+270E Dingbat pencil — Ambiguous EAW
-			'✦',   // U+2726 Dingbat star — Ambiguous EAW, used in xhigh effort
-			'▰', '▱', // U+25B0/25B1 effort bar parallelograms — Ambiguous EAW
-			'⋮',   // U+22EE vertical ellipsis — Ambiguous EAW, used as bar separator
-			'●', '◕', '◑', '⧉', '◔': // bar/ctx icons — Ambiguous EAW
-			n += 2
-		default:
-			n += 1
-		}
-	}
-	return n
+	return utf8.RuneCountInString(ansiRe.ReplaceAllString(s, ""))
 }
 
 func alignedLine(left, right string, width int) string {
@@ -777,7 +773,7 @@ func truncatePath(path string, maxRunes int) string {
 // --- Rendering ---
 
 func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, modelName, cwd string, compacted bool) {
-	targetW := terminalWidth()
+	targetW := terminalWidth() - renderSafetyMargin
 	pwdDisplay := tildeCollapsePath(cwd)
 
 	modelShort := strings.TrimPrefix(modelName, "Claude ")
