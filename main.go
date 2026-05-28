@@ -656,7 +656,7 @@ func separator(width int) string {
 }
 
 func buildBars(targetW, leftPillsLen, totalFixed, windowPct, ctxPct int, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel string, compactThreshold int) string {
-	barsTotal := targetW - leftPillsLen - 2 - totalFixed
+	barsTotal := targetW - leftPillsLen - 3 - totalFixed
 	if barsTotal < 10 {
 		barsTotal = 10
 	}
