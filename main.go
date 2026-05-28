@@ -643,7 +643,11 @@ func visibleLen(s string) int {
 		switch r {
 		case '', '': // Nerd Font powerline caps render as 2 cols in wide-mode terminals
 			n += 2
-		case '⚡': // U+26A1 is East Asian Wide — officially 2 cols
+		case '⚡',   // U+26A1 East Asian Wide — officially 2 cols
+			'⏱',   // U+23F1 emoji clock — 2 cols in most modern terminals
+			'✎',   // U+270E Dingbat pencil — Ambiguous EAW
+			'✦',   // U+2726 Dingbat star — Ambiguous EAW, used in xhigh effort
+			'●', '◕', '◑', '⧉', '◔': // bar/ctx icons — Ambiguous EAW
 			n += 2
 		default:
 			n += 1
@@ -821,8 +825,8 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 	winTimeLabel := win.TimeLeft
 	ctxLabel := fmt.Sprintf("%d%%", ctxPct)
 
-	winFixed := 1 + 1 + 1 + len(winLabel) + 1 + len(winTimeLabel)
-	ctxFixed := 1 + 1 + 1 + len(ctxLabel)
+	winFixed := visibleLen(winIcon) + 1 + 1 + len(winLabel) + 1 + len(winTimeLabel)
+	ctxFixed := visibleLen(ctxIcon) + 1 + 1 + len(ctxLabel)
 	totalFixed := winFixed + ctxFixed + 3
 
 	compactThreshold := autoCompactThreshold
