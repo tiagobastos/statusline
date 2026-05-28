@@ -638,7 +638,18 @@ func pill(bg, content string) string {
 
 func visibleLen(s string) int {
 	stripped := ansiRe.ReplaceAllString(s, "")
-	return utf8.RuneCountInString(stripped)
+	n := 0
+	for _, r := range stripped {
+		switch r {
+		case '', '': // Nerd Font powerline caps render as 2 cols in wide-mode terminals
+			n += 2
+		case '⚡': // U+26A1 is East Asian Wide — officially 2 cols
+			n += 2
+		default:
+			n += 1
+		}
+	}
+	return n
 }
 
 func alignedLine(left, right string, width int) string {
