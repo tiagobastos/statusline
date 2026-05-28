@@ -648,6 +648,7 @@ func visibleLen(s string) int {
 			'✎',   // U+270E Dingbat pencil — Ambiguous EAW
 			'✦',   // U+2726 Dingbat star — Ambiguous EAW, used in xhigh effort
 			'▰', '▱', // U+25B0/25B1 effort bar parallelograms — Ambiguous EAW
+			'⋮',   // U+22EE vertical ellipsis — Ambiguous EAW, used as bar separator
 			'●', '◕', '◑', '⧉', '◔': // bar/ctx icons — Ambiguous EAW
 			n += 2
 		default:
@@ -672,7 +673,7 @@ func separator(width int) string {
 }
 
 func buildBars(targetW, leftPillsLen, totalFixed, windowPct, ctxPct int, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel string, compactThreshold int) string {
-	barsTotal := targetW - leftPillsLen - 3 - totalFixed
+	barsTotal := targetW - leftPillsLen - visibleLen("⋮") - 2 - totalFixed
 	if barsTotal < 10 {
 		barsTotal = 10
 	}
@@ -828,7 +829,8 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 
 	winFixed := visibleLen(winIcon) + 1 + 1 + len(winLabel) + 1 + len(winTimeLabel)
 	ctxFixed := visibleLen(ctxIcon) + 1 + 1 + len(ctxLabel)
-	totalFixed := winFixed + ctxFixed + 3
+	sepFixed := 1 + visibleLen("⋮") + 1 // " ⋮ " mid-bar separator
+	totalFixed := winFixed + ctxFixed + sepFixed
 
 	compactThreshold := autoCompactThreshold
 	if v := os.Getenv("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"); v != "" {
