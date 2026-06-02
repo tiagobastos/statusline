@@ -859,7 +859,10 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 			maxPwdRunes = 25
 		}
 		pwdLabel = truncatePath(pwdLabel, maxPwdRunes)
-		l2Left := pill(bgGreen, pwdLabel) + " " + pill(bgPurple, branchIcon+gitInfo.Branch)
+		pwdPill := pill(bgGreen, pwdLabel)
+
+		// Right-side pills are built first so the branch can be budgeted against the
+		// width they leave.
 		var l2RightParts []string
 		if gitInfo.Age != "" {
 			l2RightParts = append(l2RightParts, pill(bgDark, "⏱ "+gitInfo.Age))
@@ -874,6 +877,18 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 			l2RightParts = append(l2RightParts, pill(bgDark, "⇅ "+gitInfo.Sync))
 		}
 		l2Right := strings.Join(l2RightParts, " ")
+
+		// The branch name is the only unbounded field on line 2 (the path is capped
+		// above). Truncate it with truncatePath — same "…/trailing-segments" style as
+		// the path — so the row fits targetW; otherwise a long ref (e.g. a dependabot
+		// branch) pushes the right-side pills off the edge. Budget subtracts the path
+		// pill, the branch pill's icon + chrome (caps + spaces = 4), the right pills,
+		// the inter-pill space, and the one-column min gap before the right group.
+		branchBudget := targetW - visibleLen(pwdPill) - visibleLen(branchIcon) - visibleLen(l2Right) - 6
+		if branchBudget < 3 {
+			branchBudget = 3
+		}
+		l2Left := pwdPill + " " + pill(bgPurple, branchIcon+truncatePath(gitInfo.Branch, branchBudget))
 
 		sepW := targetW
 		if l2W := visibleLen(l2Left) + visibleLen(l2Right) + 1; l2W > sepW {

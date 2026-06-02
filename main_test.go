@@ -1,6 +1,13 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+	"testing"
+)
 
 // TestVisibleLenSingleWidth pins visibleLen to the terminal's actual rendering.
 //
@@ -38,5 +45,47 @@ func TestVisibleLenSingleWidth(t *testing.T) {
 func TestVisibleLenStripsANSI(t *testing.T) {
 	if got := visibleLen("\x1b[31m●\x1b[0m"); got != 1 {
 		t.Errorf("visibleLen with ANSI wrapper = %d, want 1", got)
+	}
+}
+
+// captureStdout runs f and returns everything it wrote to os.Stdout.
+func captureStdout(f func()) string {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	f()
+	w.Close()
+	os.Stdout = old
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	return buf.String()
+}
+
+// TestLine2NoOverflowLongBranch guards against an over-long branch name pushing
+// the right-side pills off the edge. The branch is the one unbounded field on
+// line 2 (the path is length-capped), so without truncation a long ref (e.g. a
+// dependabot branch) overflows targetW on narrower widths. Probe-verified
+// single-width glyphs mean visibleLen == true rendered width here.
+func TestLine2NoOverflowLongBranch(t *testing.T) {
+	cases := []int{80, 90, 100, 120, 160}
+	for _, cols := range cases {
+		t.Setenv("COLUMNS", strconv.Itoa(cols))
+		git := &GitInfo{
+			Branch:   "dependabot/composer/dev-dependencies-cc3e4e928d",
+			ModCount: 1,
+			Age:      "18h",
+			Sync:     "=",
+		}
+		out := captureStdout(func() {
+			renderStatusLine(git, WindowInfo{Pct: 11, TimeLeft: "2h 21m left"}, 11,
+				"high", "Claude Opus 4.8", "/tmp/focus-service-insights-reports", false)
+		})
+		targetW := cols - renderSafetyMargin
+		for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+			if w := visibleLen(line); w > targetW {
+				t.Errorf("COLUMNS=%d: line exceeds targetW=%d (width=%d): %q",
+					cols, targetW, w, ansiRe.ReplaceAllString(line, ""))
+			}
+		}
 	}
 }
