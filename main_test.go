@@ -89,3 +89,45 @@ func TestLine2NoOverflowLongBranch(t *testing.T) {
 		}
 	}
 }
+
+// TestMaxWidthCap verifies the statusline caps its rendered width on wide
+// terminals (default 120), honors the CLAUDE_STATUSLINE_MAX_WIDTH override, and
+// does not shrink a narrow terminal below its available width.
+func TestMaxWidthCap(t *testing.T) {
+	git := &GitInfo{Branch: "main", Age: "5m", Sync: "="}
+	render := func() string {
+		return captureStdout(func() {
+			renderStatusLine(git, WindowInfo{Pct: 50, TimeLeft: "2h left"}, 50,
+				"high", "Claude Opus 4.8", "/tmp", false)
+		})
+	}
+	maxLineWidth := func(out string) int {
+		m := 0
+		for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+			if w := visibleLen(line); w > m {
+				m = w
+			}
+		}
+		return m
+	}
+
+	// Wide terminal, default cap: no rendered line may exceed defaultMaxWidth.
+	t.Setenv("COLUMNS", "250")
+	t.Setenv("CLAUDE_STATUSLINE_MAX_WIDTH", "")
+	if w := maxLineWidth(render()); w > defaultMaxWidth {
+		t.Errorf("wide terminal, default cap: max line width %d exceeds %d", w, defaultMaxWidth)
+	}
+
+	// Env override raises the cap.
+	t.Setenv("CLAUDE_STATUSLINE_MAX_WIDTH", "160")
+	if w := maxLineWidth(render()); w <= defaultMaxWidth || w > 160 {
+		t.Errorf("override 160: expected max line width in (%d, 160], got %d", defaultMaxWidth, w)
+	}
+
+	// Narrow terminal: the cap must not shrink it below the available width.
+	t.Setenv("COLUMNS", "90")
+	t.Setenv("CLAUDE_STATUSLINE_MAX_WIDTH", "")
+	if w := maxLineWidth(render()); w != 90-renderSafetyMargin {
+		t.Errorf("narrow terminal: expected full width %d, got %d", 90-renderSafetyMargin, w)
+	}
+}
