@@ -213,6 +213,45 @@ func modelPillBg(name string) string {
 // leaves a harmless trailing gap), so this deliberately rounds toward the gap.
 const renderSafetyMargin = 6
 
+// defaultMaxWidth caps how wide the statusline renders when the terminal is
+// wider. Claude Code now reports the true (often very wide) terminal width via
+// COLUMNS, which would otherwise stretch the bars edge-to-edge; capping keeps the
+// layout compact and left-anchored. Override per-machine with
+// CLAUDE_STATUSLINE_MAX_WIDTH (a process env var or the "env" block of
+// settings.json); a value <= 0 disables the cap and uses the full width.
+const defaultMaxWidth = 120
+
+// maxStatusWidth returns the configured maximum rendered width (defaultMaxWidth
+// if unset/unparseable). It checks the process environment first, then the "env"
+// block of the global and project settings.json (project wins) — the same
+// configuration surface the statusline already uses for the effort level.
+func maxStatusWidth(cwd string) int {
+	raw := os.Getenv("CLAUDE_STATUSLINE_MAX_WIDTH")
+	if raw == "" {
+		home, _ := os.UserHomeDir()
+		for _, p := range []string{
+			filepath.Join(home, ".claude", "settings.json"),
+			filepath.Join(cwd, ".claude", "settings.json"),
+		} {
+			if data, err := os.ReadFile(p); err == nil {
+				var s Settings
+				if json.Unmarshal(data, &s) == nil {
+					if v := s.Env["CLAUDE_STATUSLINE_MAX_WIDTH"]; v != "" {
+						raw = v // project settings (read last) override global
+					}
+				}
+			}
+		}
+	}
+	if raw != "" {
+		var n int
+		if cnt, _ := fmt.Sscanf(strings.TrimSpace(raw), "%d", &n); cnt == 1 {
+			return n
+		}
+	}
+	return defaultMaxWidth
+}
+
 func terminalWidth() int {
 	if cols := os.Getenv("COLUMNS"); cols != "" {
 		var w int
@@ -780,6 +819,9 @@ func truncatePath(path string, maxRunes int) string {
 
 func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, modelName, cwd string, compacted bool) {
 	targetW := terminalWidth() - renderSafetyMargin
+	if mw := maxStatusWidth(cwd); mw > 0 && targetW > mw {
+		targetW = mw // cap wide terminals to a comfortable, left-anchored width
+	}
 	pwdDisplay := tildeCollapsePath(cwd)
 
 	modelShort := strings.TrimPrefix(modelName, "Claude ")
