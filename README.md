@@ -6,6 +6,12 @@ Rich status line for [Claude Code](https://claude.ai/code), built in Go. Zero de
 
 Displays model name, effort level, context window usage, rate-limit bar, git branch, stash count, and working directory — rendered as a compact ANSI status line on each turn.
 
+## Requirements
+
+- A **[Nerd Font](https://www.nerdfonts.com/)** (or any Powerline-patched font) set as your terminal font. The rounded pill caps (Powerline glyphs `U+E0B6`/`U+E0B4`) and the branch, sync, stash, and clock icons are drawn from it — without a Nerd Font they render as missing-glyph boxes.
+- A terminal with **24-bit truecolor** support, used for the pill and bar colors. iTerm2, WezTerm, Kitty, Ghostty, Warp, and recent Terminal.app all qualify.
+- The status line sizes itself to the terminal width Claude Code reports via `$COLUMNS` and caps on very wide windows — see [Width](#width).
+
 ## Installation
 
 ### Option A: Download binary (macOS only)
@@ -74,6 +80,22 @@ Set `effortLevel` in `~/.claude/settings.json` or a project-level `.claude/setti
 Aliases for `xhigh`: `x-high`, `extra-high`, `extrahigh`.
 
 The `/effort` slash command overrides effort for the current session only.
+
+### Width
+
+The status line sizes to the terminal width Claude Code provides via `$COLUMNS`. On a wide or maximized window it would otherwise stretch edge-to-edge, so it caps at a maximum width — **120 columns** by default — and stays left-anchored, leaving the rest of the line empty. Narrower terminals are unaffected; it uses whatever width is available.
+
+Override the cap with `CLAUDE_STATUSLINE_MAX_WIDTH` in the `env` block of `~/.claude/settings.json` (or a project-level `.claude/settings.json`):
+
+```json
+{
+  "env": {
+    "CLAUDE_STATUSLINE_MAX_WIDTH": "140"
+  }
+}
+```
+
+Set it to `0` to disable the cap and always use the full terminal width. Long directory paths and branch names are automatically shortened with a leading `…/` to fit.
 
 ## Layout
 
