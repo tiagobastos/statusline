@@ -201,11 +201,17 @@ func modelPillBg(name string) string {
 
 // --- Terminal width ---
 
-// renderSafetyMargin keeps rendered lines this many columns short of the
-// reported terminal width. visibleLen is exact for this terminal's font, so the
-// margin is a backstop: it absorbs a genuinely wide glyph (e.g. CJK in a path)
-// or an off-by-one in the reported width without wrapping the rightmost label.
-const renderSafetyMargin = 2
+// renderSafetyMargin keeps rendered lines this many columns short of the width
+// reported via COLUMNS. A DSR cursor probe confirmed every glyph the statusline
+// uses renders single-width in the target terminal, so visibleLen is exact: this
+// margin is NOT glyph slop. Claude Code paints the statusline into a few columns
+// fewer than the COLUMNS value it passes the script (a render inset), so with the
+// previous 2-col reserve the rightmost pill was cropped. In-situ logging inside
+// the render subprocess (COLUMNS=122) showed content must sit a handful of columns
+// inside COLUMNS to clear the inset; 6 reserves for it with headroom. The failure
+// is asymmetric (too little reserve crops a label and is unrecoverable; too much
+// leaves a harmless trailing gap), so this deliberately rounds toward the gap.
+const renderSafetyMargin = 6
 
 func terminalWidth() int {
 	if cols := os.Getenv("COLUMNS"); cols != "" {
