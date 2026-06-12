@@ -153,6 +153,7 @@
   .chip{display:inline-flex;align-items:center;gap:.5ch;padding:3px 11px;border-radius:999px;
     color:#fff;font-weight:700;font-size:12.5px;white-space:nowrap}
   .chip.opus{background:#6496eb} .chip.sonnet{background:#a06ec8} .chip.haiku{background:#46b9a5}
+  .chip.fable{background:#6496eb} /* no dedicated colour in modelPillBg → default blue */
   .chip .bars{letter-spacing:.5px}
   .gold{color:#daa520} .empty{color:#505050} .sparkle{color:#ff643c} .bolt{color:#ffdc32}
   .chip .noeff{color:rgba(255,255,255,.5);font-weight:500;font-style:italic;font-size:11px}
@@ -218,7 +219,7 @@
   <div class="callout q reveal" style="animation-delay:.44s">
     <ul class="qlist">
       <li><span class="qnum">1</span><span><b>Sonnet 4.6 + <code>max</code>.</b> The docs disagree on whether Sonnet 4.6 supports <code>max</code> (one says yes, the migration guide says Opus-only). Shown as <code>max</code> here; if unsupported it clamps to <code>high</code>. Authoritative check: the Models API <code>capabilities.effort</code> tree.</span></li>
-      <li><span class="qnum">2</span><span><b>Fable has no dedicated pill colour.</b> <code>modelPillBg</code> only special-cases opus / sonnet / haiku, so Fable falls back to the default blue (identical to Opus) — shown that way here. A dedicated colour would be a separate change.</span></li>
+      <li><span class="qnum">2</span><span><b>Fable has no dedicated pill colour.</b> <code>modelPillBg</code> only special-cases opus / sonnet / haiku, so Fable's pill reads <code>fable</code> but takes the default blue background — the same blue as Opus. A dedicated colour would be a separate change.</span></li>
     </ul>
   </div>
 
@@ -233,16 +234,17 @@ const ORDER = ['low','medium','high','xhigh','max'];
 
 // Effort capability per model (claude-api reference): xhigh is Opus-4.7+/Fable;
 // Haiku & Sonnet 4.5 have no effort param; Sonnet 4.6 + max is contested.
+// pill = the family label the status line prints (model name, version stripped);
+// color = modelPillBg's pill background — opus/sonnet/haiku, anything else → default blue.
 const MODELS = [
-  {label:'Fable 5',    fam:'opus',   supports:['low','medium','high','xhigh','max']},
-  {label:'Opus 4.8',   fam:'opus',   supports:['low','medium','high','xhigh','max']},
-  {label:'Opus 4.7',   fam:'opus',   supports:['low','medium','high','xhigh','max']},
-  {label:'Opus 4.6',   fam:'opus',   supports:['low','medium','high','max']},
-  {label:'Sonnet 4.6', fam:'sonnet', supports:['low','medium','high'], contestedMax:true},
-  {label:'Haiku 4.5',  fam:'haiku',  supports:[]},
-  {label:'Sonnet 4.5', fam:'sonnet', supports:[]},
+  {label:'Fable 5',    pill:'fable',  color:'fable',  supports:['low','medium','high','xhigh','max']},
+  {label:'Opus 4.8',   pill:'opus',   color:'opus',   supports:['low','medium','high','xhigh','max']},
+  {label:'Opus 4.7',   pill:'opus',   color:'opus',   supports:['low','medium','high','xhigh','max']},
+  {label:'Opus 4.6',   pill:'opus',   color:'opus',   supports:['low','medium','high','max']},
+  {label:'Sonnet 4.6', pill:'sonnet', color:'sonnet', supports:['low','medium','high'], contestedMax:true},
+  {label:'Haiku 4.5',  pill:'haiku',  color:'haiku',  supports:[]},
+  {label:'Sonnet 4.5', pill:'sonnet', color:'sonnet', supports:[]},
 ];
-const PILL_TEXT = {opus:'opus', sonnet:'sonnet', haiku:'haiku'};
 
 // CC clamp: highest supported level at or below the configured one (null = none).
 function clampLevel(supports, configured){
@@ -266,8 +268,8 @@ function glyphs(eff){
   if(eff === 'max')   h += ' <span class="bolt">⚡</span>';
   return h;
 }
-function chip(fam, eff){
-  return '<span class="chip ' + fam + '"><span>' + PILL_TEXT[fam] + '</span>' + glyphs(eff) + '</span>';
+function chip(color, text, eff){
+  return '<span class="chip ' + color + '"><span>' + text + '</span>' + glyphs(eff) + '</span>';
 }
 
 document.getElementById('head').innerHTML =
@@ -277,7 +279,7 @@ const rows = document.getElementById('rows');
 MODELS.forEach(m => {
   const tr = document.createElement('tr');
   if(m.supports.length === 0) tr.className = 'noeff';
-  let html = '<th>' + m.label + '<small>pill: ' + PILL_TEXT[m.fam] + '</small></th>';
+  let html = '<th>' + m.label + '<small>pill: ' + m.pill + '</small></th>';
   ORDER.forEach(cfg => {
     const contested = m.contestedMax && cfg === 'max';
     const eff = contested ? 'max' : clampLevel(m.supports, cfg);
@@ -285,7 +287,7 @@ MODELS.forEach(m => {
     if(eff === null)            cap = '<span class="cap">none</span>';
     else if(contested)         cap = '<span class="cap"><span class="q" title="Docs disagree; clamps to high if unsupported">?</span> contested</span>';
     else if(eff !== cfg)       cap = '<span class="cap"><s>' + cfg + '</s> <span class="demote">→ ' + eff + '</span></span>';
-    html += '<td>' + chip(m.fam, eff) + cap + '</td>';
+    html += '<td>' + chip(m.color, m.pill, eff) + cap + '</td>';
   });
   tr.innerHTML = html;
   rows.appendChild(tr);
