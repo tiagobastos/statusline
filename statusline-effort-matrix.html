@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Statusline — model | effort rendering</title>
+<style>
+  :root{
+    --canvas:#f4f3ef; --card:#ffffff; --card-2:#faf9f6;
+    --ink:#1c2130; --mut:#586072; --faint:#8b91a0; --line:#e9e6df; --line-2:#efece6;
+    --indigo:#4f46e5; --indigo-deep:#4338ca; --indigo-wash:#eef0ff; --indigo-line:#d9dcfb;
+    --g-ink:#15803d; --g-bg:#e7f6ec; --g-line:#c3e6cf;
+    --a-ink:#9a6207; --a-bg:#fdf3d8; --a-line:#f0db9f;
+    --r-ink:#c4320a; --r-bg:#fdece8; --r-line:#f6c8bd;
+    --b-ink:#2563c9; --b-bg:#e9f0fe; --b-line:#c8d9f6;
+    --shadow-sm:0 1px 2px rgba(20,26,38,.05);
+    --shadow:0 1px 2px rgba(20,26,38,.05), 0 10px 26px -12px rgba(20,26,38,.18);
+    --shadow-lg:0 2px 4px rgba(20,26,38,.05), 0 22px 48px -20px rgba(20,26,38,.26);
+    --r-card:16px; --r-sm:9px;
+    --sans:"Avenir Next","Avenir","Segoe UI",system-ui,-apple-system,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;color:var(--ink);background:var(--canvas);font-family:var(--sans);
+    font-size:16.5px;line-height:1.65;font-weight:450;letter-spacing:-.003em;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    background-image:
+      radial-gradient(1200px 460px at 78% -8%, rgba(79,70,229,.06), transparent 60%),
+      radial-gradient(900px 380px at 4% 2%, rgba(214,150,90,.05), transparent 55%);
+    background-attachment:fixed;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  }
+  .wrap{position:relative;z-index:1;max-width:1040px;margin:0 auto;padding:54px 26px 96px}
+
+  /* ---- type scale (generous) ---- */
+  .kicker{font-size:12.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--indigo);margin:0 0 10px}
+  h1{font-size:37px;line-height:1.12;font-weight:700;letter-spacing:-.025em;margin:0 0 10px}
+  h1 code{font-size:.62em;font-weight:600}
+  .meta{color:var(--mut);font-size:14.5px}
+  .meta a{color:var(--indigo);text-decoration:none;font-weight:600}
+  .meta a:hover{text-decoration:underline}
+  .lede{color:var(--mut);font-size:17px;margin:18px 0 0;line-height:1.6}
+  .lede b{color:var(--ink);font-weight:650}
+
+  h2{font-size:22.5px;font-weight:700;letter-spacing:-.02em;margin:48px 0 18px;display:flex;align-items:center;gap:12px}
+  h2 .n{flex:none;display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;
+    background:var(--indigo-wash);color:var(--indigo);font-size:14px;font-weight:800;border:1px solid var(--indigo-line)}
+  h2 .rule{flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+
+  code{font-family:var(--mono);font-size:.82em;background:#f2f1ed;border:1px solid var(--line);
+    border-radius:6px;padding:.06em .42em;color:#39414f}
+  a{color:var(--indigo)}
+
+  .pills{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+  .pill{font-size:13px;font-weight:600;padding:7px 14px;border-radius:999px;border:1px solid var(--line);
+    background:var(--card);box-shadow:var(--shadow-sm);display:inline-flex;align-items:center;gap:7px}
+  .pill.ok{color:var(--g-ink);border-color:var(--g-line);background:var(--g-bg)}
+  .pill.warn{color:var(--a-ink);border-color:var(--a-line);background:var(--a-bg)}
+  .dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 22%,transparent)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
+    padding:24px 26px;box-shadow:var(--shadow)}
+
+  .formula{background:linear-gradient(180deg,#1b2130,#222a3d);border-radius:13px;padding:20px 22px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.06), var(--shadow-sm)}
+  .formula .eq{font-family:var(--mono);font-size:14.5px;line-height:1.95;color:#e7eaf3;letter-spacing:.01em}
+  .formula .ht{color:#ffd479;font-weight:700}
+  .formula .hf{color:#8fb6ff;font-weight:700}
+  .dims{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+  @media(max-width:720px){.dims{grid-template-columns:1fr}}
+  .dim{border:1px solid var(--line);border-radius:13px;padding:16px 18px;background:var(--card-2)}
+  .dim .h{font-weight:700;font-size:14.5px;margin-bottom:4px}
+  .dim.t1 .h{color:var(--a-ink)} .dim.t2 .h{color:var(--b-ink)}
+  .note{color:var(--mut);font-size:14px;margin:16px 0 0}
+  .note.soft{color:var(--faint);font-size:13px}
+
+  .tablewrap{border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;font-size:14px;background:var(--card)}
+  th,td{text-align:left;padding:13px 16px;border-bottom:1px solid var(--line-2);vertical-align:top}
+  th{background:var(--card-2);color:var(--mut);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em}
+  tbody tr{transition:background .14s ease}
+  tbody tr:hover{background:var(--card-2)}
+  tr:last-child td{border-bottom:none}
+  td.opt{font-weight:700;white-space:nowrap}
+  .tag{display:inline-block;font-size:11.5px;font-weight:650;padding:3px 10px;border-radius:7px;border:1px solid;white-space:nowrap;letter-spacing:.01em}
+  .t-low{color:var(--g-ink);background:var(--g-bg);border-color:var(--g-line)}
+  .t-med{color:var(--a-ink);background:var(--a-bg);border-color:var(--a-line)}
+  .t-high{color:var(--r-ink);background:var(--r-bg);border-color:var(--r-line)}
+  .t-eng{color:var(--g-ink);background:var(--g-bg);border-color:var(--g-line)}
+  .t-prod{color:var(--b-ink);background:var(--b-bg);border-color:var(--b-line)}
+  .t-none{color:var(--faint)}
+
+  .opts{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:820px){.opts{grid-template-columns:1fr}}
+  .ocard{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:22px 24px;
+    box-shadow:var(--shadow);display:flex;flex-direction:column;position:relative;transition:transform .18s ease,box-shadow .18s ease}
+  .ocard:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
+  .ocard.rec{border-color:var(--indigo-line);background:linear-gradient(180deg,var(--indigo-wash),transparent 42%),var(--card)}
+  .ocard.rec::before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:4px;border-radius:0 4px 4px 0;
+    background:linear-gradient(var(--indigo),#7c74f0)}
+  .ribbon{position:absolute;top:18px;right:20px;font-size:11px;font-weight:800;letter-spacing:.08em;
+    color:var(--indigo);background:var(--card);border:1px solid var(--indigo-line);border-radius:999px;padding:4px 11px}
+  .ocard h3{margin:0 0 3px;font-size:18px;font-weight:700;letter-spacing:-.015em;padding-right:96px}
+  .ocard .letter{color:var(--indigo);font-weight:800}
+  .ocard .lab{font-size:14.5px;color:var(--mut);margin:0 0 16px;line-height:1.5}
+  .pc-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin:12px 0 6px}
+  .pc{display:flex;flex-direction:column;gap:7px}
+  .pc div{font-size:14.5px;padding-left:24px;position:relative;color:#39414f;line-height:1.45}
+  .pro::before{content:"";position:absolute;left:2px;top:.55em;width:11px;height:11px;border-radius:50%;background:var(--g-bg);border:1px solid var(--g-line)}
+  .pro::after{content:"";position:absolute;left:5.5px;top:.78em;width:4px;height:4px;border-radius:50%;background:var(--g-ink)}
+  .con::before{content:"";position:absolute;left:2px;top:.55em;width:11px;height:11px;border-radius:50%;background:var(--r-bg);border:1px solid var(--r-line)}
+  .con::after{content:"";position:absolute;left:6.5px;top:.95em;width:7px;height:1.5px;background:var(--r-ink);border-radius:2px}
+
+  .callout{border-radius:var(--r-card);padding:22px 24px;border:1px solid var(--line);box-shadow:var(--shadow)}
+  .callout.rec{background:linear-gradient(180deg,var(--indigo-wash),var(--card) 70%);border-color:var(--indigo-line)}
+  .callout.q{background:linear-gradient(180deg,var(--b-bg),var(--card) 70%);border-color:var(--b-line)}
+  .callout p{margin:0}
+  .callout p+p{margin-top:12px}
+  .qlist{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:14px}
+  .qlist li{display:flex;gap:13px;font-size:15.5px;line-height:1.5}
+  .qnum{flex:none;display:inline-grid;place-items:center;width:26px;height:26px;border-radius:8px;
+    background:var(--card);color:var(--b-ink);border:1px solid var(--b-line);font-weight:800;font-size:13px}
+  .qlist b{font-weight:700}
+
+  .foot{color:var(--faint);font-size:13px;margin-top:38px;border-top:1px solid var(--line);padding-top:18px}
+
+  @media(prefers-reduced-motion:no-preference){
+    .reveal{opacity:0;transform:translateY(14px);animation:rise .62s cubic-bezier(.2,.7,.25,1) forwards}
+    @keyframes rise{to{opacity:1;transform:none}}
+  }
+
+  /* ===========================================================================
+     COMPONENT ADDITION · statusline effort matrix
+     A dark "terminal" panel (reusing the .formula gradient tokens) so the chips
+     render with their real colours — pill backgrounds and glyph hues are lifted
+     verbatim from main.go and only read correctly against a dark canvas.
+     =========================================================================== */
+  .term{background:linear-gradient(180deg,#1b2130,#222a3d);border-radius:14px;padding:16px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.06),var(--shadow);overflow-x:auto}
+  .term table.matrix{border-collapse:collapse;width:100%;background:transparent;font-family:var(--mono)}
+  .term .matrix th,.term .matrix td{border:1px solid rgba(255,255,255,.07);padding:11px 9px;
+    text-align:center;vertical-align:middle;text-transform:none;letter-spacing:0;background:transparent}
+  .term .matrix thead th{color:#aeb6c8;font-weight:600;font-size:12px}
+  .term .matrix thead th small{display:block;color:#737c91;font-weight:400;font-size:10px;margin-top:2px}
+  .term .matrix tbody th{text-align:left;color:#e7eaf3;font-weight:600;font-size:12.5px;white-space:nowrap;background:rgba(255,255,255,.02)}
+  .term .matrix tbody th small{display:block;color:#7a8298;font-weight:400;font-size:10px;margin-top:1px}
+  .term .matrix tr.noeff th,.term .matrix tr.noeff td{background:rgba(255,255,255,.015)}
+  .chip{display:inline-flex;align-items:center;gap:.5ch;padding:3px 11px;border-radius:999px;
+    color:#fff;font-weight:700;font-size:12.5px;white-space:nowrap}
+  .chip.opus{background:#6496eb} .chip.sonnet{background:#a06ec8} .chip.haiku{background:#46b9a5}
+  .chip .bars{letter-spacing:.5px}
+  .gold{color:#daa520} .empty{color:#505050} .sparkle{color:#ff643c} .bolt{color:#ffdc32}
+  .chip .noeff{color:rgba(255,255,255,.5);font-weight:500;font-style:italic;font-size:11px}
+  .cap{display:block;margin-top:6px;font-size:10.5px;color:#8b92a4}
+  .cap .demote{color:#e0a04a} .cap s{color:#6b7283} .cap .q{color:#ff643c;font-weight:700;cursor:help}
+  .legend{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:14px;padding:14px 16px 4px;
+    border-top:1px solid rgba(255,255,255,.08)}
+  .legend .li{display:flex;align-items:center;gap:9px;font-size:12.5px;color:#aeb6c8}
+  .legend .g{font-family:var(--mono);font-size:13.5px;min-width:54px;text-align:center}
+  .legend .li b{color:#e7eaf3;font-weight:650}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="reveal" style="animation-delay:.02s">
+    <p class="kicker">Statusline · rendering reference</p>
+    <h1>model <code>|</code> effort</h1>
+    <div class="meta"><a href="https://github.com/tiagobastos/statusline">tiagobastos/statusline</a> · colours &amp; glyphs from <code>main.go</code> · <code>effort.level</code> payload</div>
+    <div class="pills">
+      <span class="pill ok"><span class="dot"></span>reads <code style="background:none;border:none;padding:0;color:inherit">effort.level</code> verbatim</span>
+      <span class="pill ok"><span class="dot"></span>no local clamping</span>
+      <span class="pill warn"><span class="dot"></span>Sonnet 4.6 + max: unconfirmed</span>
+    </div>
+    <p class="lede">Claude Code clamps the effort you pick down to what the active model supports and ships the <b>effective</b> value in <code>effort.level</code> — omitting it entirely when the model has no effort knob. The status line renders that verbatim, so one <code>/effort</code> setting can look different across models, and some show nothing at all.</p>
+  </header>
+
+  <h2 class="reveal" style="animation-delay:.1s"><span class="n">≡</span>The matrix<span class="rule"></span></h2>
+  <p class="note" style="margin:0 0 14px">Columns are the effort you pick (<code>/effort</code>). Each cell is the chip the status line actually draws for that model.</p>
+  <div class="term reveal" style="animation-delay:.14s">
+    <table class="matrix">
+      <thead><tr id="head"></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="legend">
+      <span class="li"><span class="g"><span class="gold">▰</span><span class="empty">▱▱</span></span><b>low</b></span>
+      <span class="li"><span class="g"><span class="gold">▰▰</span><span class="empty">▱</span></span><b>medium</b></span>
+      <span class="li"><span class="g"><span class="gold">▰▰▰</span></span><b>high</b></span>
+      <span class="li"><span class="g"><span class="gold">▰▰▰</span> <span class="sparkle">✦</span></span><b>xhigh</b></span>
+      <span class="li"><span class="g"><span class="gold">▰▰▰</span> <span class="bolt">⚡</span></span><b>max</b></span>
+      <span class="li"><span class="g" style="color:#5b6070">·</span><b>none</b> — no bars drawn</span>
+    </div>
+  </div>
+
+  <h2 class="reveal" style="animation-delay:.2s"><span class="n">i</span>How a cell is derived<span class="rule"></span></h2>
+  <div class="card reveal" style="animation-delay:.24s">
+    <p style="margin:0 0 14px">The status line owns none of this logic — it draws whatever level arrives in the payload. Claude Code does the clamping upstream:</p>
+    <div class="formula"><div class="eq">shown&nbsp;=&nbsp;<span class="ht">highest level ≤ picked</span>&nbsp;that the model supports&nbsp;&nbsp;·&nbsp;&nbsp;else&nbsp;<span class="hf">absent → no bars</span></div></div>
+    <div class="dims">
+      <div class="dim t1"><div class="h">Clamp down</div><code>xhigh</code> on Opus&nbsp;4.6 runs as <code>high</code> — the cell shows <span style="font-family:var(--mono)"><span style="color:#b8860b">▰▰▰</span></span>, never a sparkle. It rounds <em>down</em> to the nearest supported level, not up.</div>
+      <div class="dim t2"><div class="h">Absent = none</div>Haiku &amp; Sonnet&nbsp;4.5 have no effort parameter, so Claude Code omits <code>effort</code> and the status line draws no bars — never a phantom <code>medium</code>.</div>
+    </div>
+    <p class="note soft">The pill strips the version: every Opus shows <code>opus</code>, every Sonnet <code>sonnet</code>. A version's capability shows up purely in the glyphs, not the label.</p>
+  </div>
+
+  <h2 class="reveal" style="animation-delay:.3s"><span class="n">★</span>What this build changed<span class="rule"></span></h2>
+  <div class="callout rec reveal" style="animation-delay:.34s">
+    <p><b>The status line now reads <code>effort.level</code> and trusts it.</b> Previously it parsed a flat <code>effortLevel</code> field that Claude Code doesn't send, so it silently fell back to a configured default — and a stale local table re-clamped <code>xhigh</code> upward to <code>max</code>. Both are gone.</p>
+    <p>A model with no effort support now renders no effort segment instead of a phantom <code>medium</code>, and there is no version-specific capability table to keep in sync — Claude Code is the single source of truth.</p>
+  </div>
+
+  <h2 class="reveal" style="animation-delay:.4s"><span class="n">?</span>Caveats<span class="rule"></span></h2>
+  <div class="callout q reveal" style="animation-delay:.44s">
+    <ul class="qlist">
+      <li><span class="qnum">1</span><span><b>Sonnet 4.6 + <code>max</code>.</b> The docs disagree on whether Sonnet 4.6 supports <code>max</code> (one says yes, the migration guide says Opus-only). Shown as <code>max</code> here; if unsupported it clamps to <code>high</code>. Authoritative check: the Models API <code>capabilities.effort</code> tree.</span></li>
+      <li><span class="qnum">2</span><span><b>Fable has no dedicated pill colour.</b> <code>modelPillBg</code> only special-cases opus / sonnet / haiku, so Fable falls back to the default blue (identical to Opus) — shown that way here. A dedicated colour would be a separate change.</span></li>
+    </ul>
+  </div>
+
+  <div class="foot reveal" style="animation-delay:.5s">
+    Colours &amp; glyphs lifted verbatim from <code>main.go</code> — fgGold 218,165,32 · fgGlyph 255,100,60 (✦) · fgBolt 255,220,50 (⚡) · pill bgBlue/bgPurple/bgTeal. Powerline end-caps approximated with rounded corners. Effort capability per model from the claude-api reference. Branch <code>fix/statusline-effort-nested-field</code>.
+  </div>
+
+</div>
+
+<script>
+const ORDER = ['low','medium','high','xhigh','max'];
+
+// Effort capability per model (claude-api reference): xhigh is Opus-4.7+/Fable;
+// Haiku & Sonnet 4.5 have no effort param; Sonnet 4.6 + max is contested.
+const MODELS = [
+  {label:'Fable 5',    fam:'opus',   supports:['low','medium','high','xhigh','max']},
+  {label:'Opus 4.8',   fam:'opus',   supports:['low','medium','high','xhigh','max']},
+  {label:'Opus 4.7',   fam:'opus',   supports:['low','medium','high','xhigh','max']},
+  {label:'Opus 4.6',   fam:'opus',   supports:['low','medium','high','max']},
+  {label:'Sonnet 4.6', fam:'sonnet', supports:['low','medium','high'], contestedMax:true},
+  {label:'Haiku 4.5',  fam:'haiku',  supports:[]},
+  {label:'Sonnet 4.5', fam:'sonnet', supports:[]},
+];
+const PILL_TEXT = {opus:'opus', sonnet:'sonnet', haiku:'haiku'};
+
+// CC clamp: highest supported level at or below the configured one (null = none).
+function clampLevel(supports, configured){
+  if(supports.length === 0) return null;
+  const ci = ORDER.indexOf(configured);
+  let best = null, bestI = -1;
+  for(const lvl of supports){
+    const i = ORDER.indexOf(lvl);
+    if(i <= ci && i > bestI){ best = lvl; bestI = i; }
+  }
+  return best;
+}
+function glyphs(eff){
+  if(eff === null) return '<span class="noeff">no&nbsp;effort</span>';
+  const filled = eff === 'low' ? 1 : eff === 'medium' ? 2 : 3;
+  const empty  = 3 - filled;
+  let h = '<span class="bars"><span class="gold">' + '▰'.repeat(filled) + '</span>';
+  if(empty) h += '<span class="empty">' + '▱'.repeat(empty) + '</span>';
+  h += '</span>';
+  if(eff === 'xhigh') h += ' <span class="sparkle">✦</span>';
+  if(eff === 'max')   h += ' <span class="bolt">⚡</span>';
+  return h;
+}
+function chip(fam, eff){
+  return '<span class="chip ' + fam + '"><span>' + PILL_TEXT[fam] + '</span>' + glyphs(eff) + '</span>';
+}
+
+document.getElementById('head').innerHTML =
+  '<th></th>' + ORDER.map(l => '<th>' + l + '<small>/effort</small></th>').join('');
+
+const rows = document.getElementById('rows');
+MODELS.forEach(m => {
+  const tr = document.createElement('tr');
+  if(m.supports.length === 0) tr.className = 'noeff';
+  let html = '<th>' + m.label + '<small>pill: ' + PILL_TEXT[m.fam] + '</small></th>';
+  ORDER.forEach(cfg => {
+    const contested = m.contestedMax && cfg === 'max';
+    const eff = contested ? 'max' : clampLevel(m.supports, cfg);
+    let cap = '';
+    if(eff === null)            cap = '<span class="cap">none</span>';
+    else if(contested)         cap = '<span class="cap"><span class="q" title="Docs disagree; clamps to high if unsupported">?</span> contested</span>';
+    else if(eff !== cfg)       cap = '<span class="cap"><s>' + cfg + '</s> <span class="demote">→ ' + eff + '</span></span>';
+    html += '<td>' + chip(m.fam, eff) + cap + '</td>';
+  });
+  tr.innerHTML = html;
+  rows.appendChild(tr);
+});
+</script>
+</body>
+</html>
