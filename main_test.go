@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"strconv"
@@ -129,5 +130,55 @@ func TestMaxWidthCap(t *testing.T) {
 	t.Setenv("CLAUDE_STATUSLINE_MAX_WIDTH", "")
 	if w := maxLineWidth(render()); w != 90-renderSafetyMargin {
 		t.Errorf("narrow terminal: expected full width %d, got %d", 90-renderSafetyMargin, w)
+	}
+}
+
+// TestEffortFromPayload pins the field that broke before: Claude Code sends the
+// effort level as a nested object ("effort": {"level": ...}), not a flat
+// "effortLevel" string, and omits the object entirely when the model has no
+// effort parameter. A nil Input.Effort must mean "no effort", not a default.
+func TestEffortFromPayload(t *testing.T) {
+	var withEffort Input
+	if err := json.Unmarshal([]byte(`{"effort":{"level":"xhigh"}}`), &withEffort); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if withEffort.Effort == nil || withEffort.Effort.Level != "xhigh" {
+		t.Errorf("nested effort.level not parsed: got %+v", withEffort.Effort)
+	}
+
+	var noEffort Input
+	if err := json.Unmarshal([]byte(`{"model":"Claude Haiku 4.5"}`), &noEffort); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if noEffort.Effort != nil {
+		t.Errorf("absent effort object should yield nil Effort, got %+v", noEffort.Effort)
+	}
+}
+
+// TestBuildEffortBarsNoEffort verifies an empty level renders nothing (a model
+// without effort support shows no effort segment, not a phantom "medium"), while
+// every real level still renders glyphs.
+func TestBuildEffortBarsNoEffort(t *testing.T) {
+	if got := buildEffortBars(""); got != "" {
+		t.Errorf(`buildEffortBars("") = %q, want empty`, got)
+	}
+	for _, lvl := range []string{"low", "medium", "high", "xhigh", "maximum"} {
+		if got := buildEffortBars(lvl); got == "" {
+			t.Errorf("buildEffortBars(%q) is empty, want glyphs", lvl)
+		}
+	}
+}
+
+// TestRenderNoEffortSegment verifies renderStatusLine omits the effort bars when
+// no effort applies — the ▰/▱ glyphs are effort-only, so their absence proves the
+// segment (and its leading space) was dropped rather than defaulted to medium.
+func TestRenderNoEffortSegment(t *testing.T) {
+	t.Setenv("COLUMNS", "120")
+	out := captureStdout(func() {
+		renderStatusLine(&GitInfo{Branch: "main", Age: "5m", Sync: "="},
+			WindowInfo{Pct: 20, TimeLeft: "1h left"}, 20, "", "Claude Haiku 4.5", "/tmp", false)
+	})
+	if strings.ContainsAny(out, "▰▱") {
+		t.Errorf("no-effort render still contains effort bars: %q", ansiRe.ReplaceAllString(out, ""))
 	}
 }

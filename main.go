@@ -79,12 +79,20 @@ const (
 // --- Input types ---
 
 type Input struct {
-	Model       json.RawMessage `json:"model"`
-	CWD         string          `json:"cwd"`
-	EffortLevel string          `json:"effortLevel"`
+	Model json.RawMessage `json:"model"`
+	CWD   string          `json:"cwd"`
+	// Effort is the live reasoning-effort level Claude Code applies for the
+	// current model (already model-clamped). The whole object is absent — so the
+	// pointer is nil — when the model has no effort parameter, which means
+	// "no effort" rather than a default level.
+	Effort *EffortInfo `json:"effort"`
 
 	ContextWindow CtxInfo       `json:"context_window"`
 	Workspace     WorkspaceInfo `json:"workspace"`
+}
+
+type EffortInfo struct {
+	Level string `json:"level"`
 }
 
 type CtxInfo struct {
@@ -102,8 +110,7 @@ type ModelObj struct {
 }
 
 type Settings struct {
-	EffortLevel string            `json:"effortLevel"`
-	Env         map[string]string `json:"env"`
+	Env map[string]string `json:"env"`
 }
 
 type GitInfo struct {
@@ -172,7 +179,13 @@ func main() {
 	go func() { winCh <- getWindowInfo() }()
 
 	modelName := parseModelName(input.Model)
-	effort := clampEffortForModel(readEffortLevel(cwd, input.EffortLevel), modelName)
+	// Effort comes straight from Claude Code's payload, which already reflects the
+	// live, model-clamped value and omits the field when the model has no effort
+	// knob. Trust it as-is — no local capability table, no re-clamping.
+	effort := ""
+	if input.Effort != nil {
+		effort = normalizeEffort(input.Effort.Level)
+	}
 
 	sess := getSessionData(cwd, ctxPct)
 
@@ -223,8 +236,7 @@ const defaultMaxWidth = 120
 
 // maxStatusWidth returns the configured maximum rendered width (defaultMaxWidth
 // if unset/unparseable). It checks the process environment first, then the "env"
-// block of the global and project settings.json (project wins) — the same
-// configuration surface the statusline already uses for the effort level.
+// block of the global and project settings.json (project wins).
 func maxStatusWidth(cwd string) int {
 	raw := os.Getenv("CLAUDE_STATUSLINE_MAX_WIDTH")
 	if raw == "" {
@@ -350,52 +362,8 @@ func normalizeEffort(e string) string {
 	}
 }
 
-// clampEffortForModel downgrades xhigh→max for models that don't support it.
-// Only Opus 4.7 supports xhigh; Opus 4.6 and Sonnet 4.6 top out at max.
-func clampEffortForModel(effort, modelName string) string {
-	if effort != "xhigh" {
-		return effort
-	}
-	lower := strings.ToLower(modelName)
-	opusWithXHigh := strings.Contains(lower, "opus") &&
-		(strings.Contains(lower, "4.7") || strings.Contains(lower, "4-7"))
-	if opusWithXHigh {
-		return effort
-	}
-	return "maximum"
-}
-
-func readEffortLevel(cwd string, stdinEffort string) string {
-	effort := "medium"
-	home, _ := os.UserHomeDir()
-	globalPath := filepath.Join(home, ".claude", "settings.json")
-	if data, err := os.ReadFile(globalPath); err == nil {
-		var s Settings
-		if json.Unmarshal(data, &s) == nil {
-			if s.EffortLevel != "" {
-				effort = normalizeEffort(s.EffortLevel)
-			} else if v := s.Env["CLAUDE_CODE_EFFORT_LEVEL"]; v != "" {
-				effort = normalizeEffort(v)
-			}
-		}
-	}
-	projPath := filepath.Join(cwd, ".claude", "settings.json")
-	if data, err := os.ReadFile(projPath); err == nil {
-		var s Settings
-		if json.Unmarshal(data, &s) == nil {
-			if s.EffortLevel != "" {
-				effort = normalizeEffort(s.EffortLevel)
-			} else if v := s.Env["CLAUDE_CODE_EFFORT_LEVEL"]; v != "" {
-				effort = normalizeEffort(v)
-			}
-		}
-	}
-	// Session-level override (from Claude Code's runtime state via stdin)
-	if stdinEffort != "" {
-		effort = normalizeEffort(stdinEffort)
-	}
-	return effort
-}
+// normalizeEffort maps Claude Code's effort level onto the canonical form used
+// by buildEffortBars ("max" → "maximum"; xhigh spelling variants → "xhigh").
 
 // --- Git info ---
 
@@ -774,7 +742,7 @@ func buildEffortBars(effort string) string {
 	case "maximum":
 		return fgGold + "▰▰▰ " + fgBolt + "⚡" + fgWhite
 	default:
-		return fgGold + "▰▰" + fgDkGray + "▱" + fgWhite
+		return "" // no effort segment (e.g. a model without effort support)
 	}
 }
 
@@ -828,8 +796,10 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 	modelShort = stripTrailingVersion(modelShort)
 	modelShort = strings.ToLower(modelShort)
 
-	effortBars := buildEffortBars(effort)
-	modelLabel := modelShort + " " + effortBars
+	modelLabel := modelShort
+	if effortBars := buildEffortBars(effort); effortBars != "" {
+		modelLabel += " " + effortBars
+	}
 	modelBg := modelPillBg(modelName)
 
 	winBarColor := fgWinGreen
@@ -972,6 +942,8 @@ func renderDemo() {
 		fmt.Println(fgDkGray + "  " + eff + rst)
 		renderStatusLine(mockGit, mockWin, 45, eff, model, cwd, false)
 	}
+	fmt.Println(fgDkGray + "  (none — model without effort support)" + rst)
+	renderStatusLine(mockGit, mockWin, 45, "", "Claude Haiku 4.5", cwd, false)
 
 	section("── worktree layout (long branch) ───────────────────────────────────")
 	mockWorktreeGit := &GitInfo{
