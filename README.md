@@ -61,25 +61,35 @@ Add to `~/.claude/settings.json`:
 
 ### Effort level
 
-Set `effortLevel` in `~/.claude/settings.json` or a project-level `.claude/settings.json`:
+The effort bars reflect Claude Code's **live** reasoning-effort level for the current session — whatever `/effort` is set to, already clamped by Claude Code to what the active model supports. The status line reads this from the session payload (`effort.level`) and renders it verbatim; it does **not** read effort from `settings.json` and does not re-clamp. A model with no effort parameter (Haiku, Sonnet 4.5) shows no effort bars at all.
 
-```json
-{
-  "effortLevel": "medium"
-}
-```
-
-| Value | Display |
+| Level | Display |
 |---|---|
 | `low` | `▰▱▱` |
 | `medium` | `▰▰▱` |
 | `high` | `▰▰▰` |
-| `xhigh` | `▰▰▰ ✦` (red-orange, Opus 4.7 only) |
-| `maximum` | `▰▰▰ ⚡` (yellow-gold) |
+| `xhigh` | `▰▰▰ ✦` (red-orange sparkle) |
+| `max` | `▰▰▰ ⚡` (yellow bolt) |
+| _unsupported_ | _(no bars)_ |
 
-Aliases for `xhigh`: `x-high`, `extra-high`, `extrahigh`.
+The `/effort` slash command sets the effort for the current session.
 
-The `/effort` slash command overrides effort for the current session only.
+#### What each model renders
+
+Claude Code clamps the level you pick **down** to the highest one the active model supports, then sends that effective value — so the same `/effort` setting can render differently per model. `xhigh` exists only on Opus 4.7+ and Fable; models without an effort parameter render nothing.
+
+| Model | `low` | `medium` | `high` | `xhigh` | `max` |
+|---|---|---|---|---|---|
+| Fable 5 | `▰▱▱` | `▰▰▱` | `▰▰▰` | `▰▰▰ ✦` | `▰▰▰ ⚡` |
+| Opus 4.8 / 4.7 | `▰▱▱` | `▰▰▱` | `▰▰▰` | `▰▰▰ ✦` | `▰▰▰ ⚡` |
+| Opus 4.6 | `▰▱▱` | `▰▰▱` | `▰▰▰` | `▰▰▰` ¹ | `▰▰▰ ⚡` |
+| Sonnet 4.6 | `▰▱▱` | `▰▰▱` | `▰▰▰` | `▰▰▰` ¹ | `▰▰▰ ⚡` ² |
+| Haiku 4.5 / Sonnet 4.5 | — | — | — | — | — |
+
+¹ `xhigh` isn't supported below Opus 4.7, so Claude Code runs it as `high`.
+² Sonnet 4.6 + `max` support is unconfirmed in the docs; if unsupported it clamps to `high`.
+
+For an interactive version of this table, see [`statusline-effort-matrix.html`](statusline-effort-matrix.html).
 
 ### Width
 
