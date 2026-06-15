@@ -89,8 +89,6 @@ Claude Code clamps the level you pick **down** to the highest one the active mod
 ¹ `xhigh` isn't supported below Opus 4.7, so Claude Code runs it as `high`.
 ² Sonnet 4.6 + `max` support is unconfirmed in the docs; if unsupported it clamps to `high`.
 
-For an interactive version of this table, see [`statusline-effort-matrix.html`](statusline-effort-matrix.html).
-
 ### Width
 
 The status line sizes to the terminal width Claude Code provides via `$COLUMNS`. On a wide or maximized window it would otherwise stretch edge-to-edge, so it caps at a maximum width — **120 columns** by default — and stays left-anchored, leaving the rest of the line empty. Narrower terminals are unaffected; it uses whatever width is available.
