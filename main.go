@@ -48,14 +48,19 @@ const (
 	fgWinAmber = "\033[38;2;230;175;80m"
 	fgWinRed   = "\033[38;2;255;120;80m"
 
-	// Effort bar gold
-	fgGold = "\033[38;2;218;165;32m"
+	// Effort chip: the level word sits on a neutral slate chip, colored on a
+	// green → red scale (low = green, max = red) so the effort magnitude reads at a
+	// glance. The slate is light enough to stay visible on dark terminals. The
+	// literal word always carries the meaning, so the color is a redundant cue that
+	// never stands alone — which also keeps it legible for red-green color vision
+	// deficiency.
+	bgChip = "\033[48;2;80;88;105m"
 
-	// Effort bolt yellow (maximum effort)
-	fgBolt = "\033[38;2;255;220;50m"
-
-	// Effort glyph red-orange (xHigh effort)
-	fgGlyph = "\033[38;2;255;100;60m"
+	fgEffortLow   = "\033[38;2;120;200;120m"
+	fgEffortMed   = "\033[38;2;190;205;95m"
+	fgEffortHigh  = "\033[38;2;235;195;80m"
+	fgEffortXHigh = "\033[38;2;240;140;65m"
+	fgEffortMax   = "\033[38;2;240;85;70m"
 
 	// Auto-compact threshold marker
 	fgAutoCompact = "\033[38;2;255;70;70m"
@@ -651,13 +656,19 @@ func fetchAndCacheUsage(usage *UsageData) bool {
 // --- Rendering ---
 
 func pill(bg, content string) string {
+	return pillFg(bg, fgWhite, content)
+}
+
+// pillFg renders a pill with a caller-chosen foreground color instead of the
+// default white. The effort chip uses it so its label color can encode the level.
+func pillFg(bg, fg, content string) string {
 	fgCap := strings.Replace(bg, "48;", "38;", 1)
-	return fgCap + capLeft + bg + fgWhite + bold + " " + content + " " + rst + fgCap + capRight + rst
+	return fgCap + capLeft + bg + fg + bold + " " + content + " " + rst + fgCap + capRight + rst
 }
 
 // visibleLen returns the number of terminal columns a string occupies, after
 // stripping ANSI color codes. The target terminal+font renders every glyph the
-// statusline uses (Nerd Font powerline caps, ctx circles, effort parallelograms,
+// statusline uses (Nerd Font powerline caps, ctx circles, the effort chip label,
 // the vertical-ellipsis separator, pill icons) as a single column — verified
 // directly with a cursor-position probe (DSR ESC[6n) — so the column count is
 // just the rune count. Genuine East Asian Wide / Fullwidth code points (e.g.
@@ -729,21 +740,28 @@ func buildBars(targetW, leftPillsLen, totalFixed, windowPct, ctxPct int, winBarC
 	return b.String()
 }
 
-func buildEffortBars(effort string) string {
+// buildEffortChip renders the reasoning-effort level as a standalone pill sitting
+// after the model pill. The level word is drawn in a green → red color (low = green,
+// max = red) on the neutral slate chip, encoding the effort magnitude at a glance.
+// Returns "" when no effort applies (a model without an effort knob), so the caller
+// omits the chip.
+func buildEffortChip(effort string) string {
+	var fg, label string
 	switch effort {
 	case "low":
-		return fgGold + "▰" + fgDkGray + "▱▱" + fgWhite
+		fg, label = fgEffortLow, "low"
 	case "medium":
-		return fgGold + "▰▰" + fgDkGray + "▱" + fgWhite
+		fg, label = fgEffortMed, "med"
 	case "high":
-		return fgGold + "▰▰▰" + fgWhite
+		fg, label = fgEffortHigh, "high"
 	case "xhigh":
-		return fgGold + "▰▰▰ " + fgGlyph + "✦" + fgWhite
+		fg, label = fgEffortXHigh, "xhigh"
 	case "maximum":
-		return fgGold + "▰▰▰ " + fgBolt + "⚡" + fgWhite
+		fg, label = fgEffortMax, "max"
 	default:
-		return "" // no effort segment (e.g. a model without effort support)
+		return "" // no effort chip (e.g. a model without effort support)
 	}
+	return pillFg(bgChip, fg, label)
 }
 
 func stripTrailingVersion(s string) string {
@@ -796,11 +814,11 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 	modelShort = stripTrailingVersion(modelShort)
 	modelShort = strings.ToLower(modelShort)
 
-	modelLabel := modelShort
-	if effortBars := buildEffortBars(effort); effortBars != "" {
-		modelLabel += " " + effortBars
-	}
 	modelBg := modelPillBg(modelName)
+	modelCluster := pill(modelBg, modelShort)
+	if chip := buildEffortChip(effort); chip != "" {
+		modelCluster += " " + chip
+	}
 
 	winBarColor := fgWinGreen
 	if win.Pct >= 75 {
@@ -855,7 +873,7 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 	}
 
 	if gitInfo != nil {
-		l1Pills := pill(modelBg, modelLabel)
+		l1Pills := modelCluster
 		l1PillsLen := visibleLen(l1Pills)
 		bars := fgDkGray + "⋮" + rst + " " + buildBars(targetW, l1PillsLen, totalFixed, win.Pct, ctxPct, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel, compactThreshold)
 		fmt.Print(alignedLine(l1Pills, bars, targetW))
@@ -914,7 +932,7 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 		if maxPwdRunes < 25 {
 			maxPwdRunes = 25
 		}
-		l1Pills := pill(bgGreen, truncatePath(pwdDisplay, maxPwdRunes)) + " " + pill(modelBg, modelLabel)
+		l1Pills := pill(bgGreen, truncatePath(pwdDisplay, maxPwdRunes)) + " " + modelCluster
 		l1PillsLen := visibleLen(l1Pills)
 		bars := fgDkGray + "⋮" + rst + " " + buildBars(targetW, l1PillsLen, totalFixed, win.Pct, ctxPct, winBarColor, ctxBarColor, winIcon, ctxIcon, winLabel, winTimeLabel, ctxLabel, compactThreshold)
 		fmt.Print(alignedLine(l1Pills, bars, targetW))
