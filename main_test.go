@@ -14,7 +14,7 @@ import (
 //
 // The target environment was measured directly with a cursor-position probe
 // (DSR ESC[6n): every glyph the statusline uses renders as a single column —
-// the Nerd Font powerline caps, the ctx circles, the effort parallelograms,
+// the Nerd Font powerline caps, the ctx circles, the effort chip label,
 // the vertical ellipsis, the pill icons. Only genuine East Asian Wide code
 // points (e.g. CJK) occupy two columns. visibleLen must reflect that, because
 // over-counting shrinks the bars (right-edge gap) and under-counting wraps the
@@ -27,7 +27,6 @@ func TestVisibleLenSingleWidth(t *testing.T) {
 	}{
 		{"ctx icons", "●◑◕◔", 4},
 		{"bar separator", "⋮", 1},
-		{"effort bars", "▰▱", 2},
 		{"pill icons", "⏱✎", 2},
 		{"powerline caps", "", 2},
 		{"compacted ctx icon", "↻", 1},
@@ -155,30 +154,49 @@ func TestEffortFromPayload(t *testing.T) {
 	}
 }
 
-// TestBuildEffortBarsNoEffort verifies an empty level renders nothing (a model
-// without effort support shows no effort segment, not a phantom "medium"), while
-// every real level still renders glyphs.
-func TestBuildEffortBarsNoEffort(t *testing.T) {
-	if got := buildEffortBars(""); got != "" {
-		t.Errorf(`buildEffortBars("") = %q, want empty`, got)
+// TestBuildEffortChipNoEffort verifies an empty level renders nothing (a model
+// without effort support shows no effort chip, not a phantom "medium"), while
+// every real level renders a chip containing its uppercase label.
+func TestBuildEffortChipNoEffort(t *testing.T) {
+	if got := buildEffortChip(""); got != "" {
+		t.Errorf(`buildEffortChip("") = %q, want empty`, got)
 	}
-	for _, lvl := range []string{"low", "medium", "high", "xhigh", "maximum"} {
-		if got := buildEffortBars(lvl); got == "" {
-			t.Errorf("buildEffortBars(%q) is empty, want glyphs", lvl)
+	want := map[string]string{
+		"low": "low", "medium": "med", "high": "high", "xhigh": "xhigh", "maximum": "max",
+	}
+	for lvl, label := range want {
+		got := buildEffortChip(lvl)
+		if got == "" {
+			t.Errorf("buildEffortChip(%q) is empty, want a chip", lvl)
+		}
+		if !strings.Contains(ansiRe.ReplaceAllString(got, ""), label) {
+			t.Errorf("buildEffortChip(%q) missing label %q: %q", lvl, label,
+				ansiRe.ReplaceAllString(got, ""))
 		}
 	}
 }
 
-// TestRenderNoEffortSegment verifies renderStatusLine omits the effort bars when
-// no effort applies — the ▰/▱ glyphs are effort-only, so their absence proves the
-// segment (and its leading space) was dropped rather than defaulted to medium.
+// TestRenderNoEffortSegment verifies renderStatusLine omits the effort chip when
+// no effort applies — the uppercase level labels are effort-only, so their absence
+// proves the chip (and its leading space) was dropped rather than defaulted to
+// medium. A "high" render is checked as the positive control.
 func TestRenderNoEffortSegment(t *testing.T) {
 	t.Setenv("COLUMNS", "120")
-	out := captureStdout(func() {
-		renderStatusLine(&GitInfo{Branch: "main", Age: "5m", Sync: "="},
-			WindowInfo{Pct: 20, TimeLeft: "1h left"}, 20, "", "Claude Haiku 4.5", "/tmp", false)
-	})
-	if strings.ContainsAny(out, "▰▱") {
-		t.Errorf("no-effort render still contains effort bars: %q", ansiRe.ReplaceAllString(out, ""))
+	render := func(effort, model string) string {
+		return ansiRe.ReplaceAllString(captureStdout(func() {
+			renderStatusLine(&GitInfo{Branch: "main", Age: "5m", Sync: "="},
+				WindowInfo{Pct: 20, TimeLeft: "1h left"}, 20, effort, model, "/tmp", false)
+		}), "")
+	}
+
+	noEffort := render("", "Claude Haiku 4.5")
+	for _, label := range []string{"low", "med", "high", "xhigh", "max"} {
+		if strings.Contains(noEffort, label) {
+			t.Errorf("no-effort render contains effort label %q: %q", label, noEffort)
+		}
+	}
+
+	if withEffort := render("high", "Claude Opus 4.8"); !strings.Contains(withEffort, "high") {
+		t.Errorf("high-effort render missing high chip: %q", withEffort)
 	}
 }

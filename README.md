@@ -61,29 +61,30 @@ Add to `~/.claude/settings.json`:
 
 ### Effort level
 
-The effort bars reflect Claude Code's **live** reasoning-effort level for the current session — whatever `/effort` is set to, already clamped by Claude Code to what the active model supports. The status line reads this from the session payload (`effort.level`) and renders it verbatim; it does **not** read effort from `settings.json` and does not re-clamp. A model with no effort parameter (Haiku, Sonnet 4.5) shows no effort bars at all.
+The effort chip reflects Claude Code's **live** reasoning-effort level for the current session — whatever `/effort` is set to, already clamped by Claude Code to what the active model supports. The status line reads this from the session payload (`effort.level`) and renders it verbatim; it does **not** read effort from `settings.json` and does not re-clamp. A model with no effort parameter (Haiku, Sonnet 4.5) shows no effort chip at all.
 
-| Level | Display |
-|---|---|
-| `low` | `▰▱▱` |
-| `medium` | `▰▰▱` |
-| `high` | `▰▰▰` |
-| `xhigh` | `▰▰▰ ✦` (red-orange sparkle) |
-| `max` | `▰▰▰ ⚡` (yellow bolt) |
-| _unsupported_ | _(no bars)_ |
+The level appears as a small chip right after the model pill — the level word on a neutral slate background, colored on a green → red scale so higher effort reads hotter at a glance:
 
-The `/effort` slash command sets the effort for the current session.
+```
+ opus  low      →  green
+ opus  med      →  yellow-green
+ opus  high     →  amber
+ opus  xhigh    →  orange
+ opus  max      →  red
+```
+
+The literal word always names the level, so the color is a redundant cue — it never stands alone, which keeps it legible under red-green color vision deficiency. The `/effort` slash command sets the effort for the current session.
 
 #### What each model renders
 
-Claude Code clamps the level you pick **down** to the highest one the active model supports, then sends that effective value — so the same `/effort` setting can render differently per model. `xhigh` exists only on Opus 4.7+ and Fable; models without an effort parameter render nothing.
+Claude Code clamps the level you pick **down** to the highest one the active model supports, then sends that effective value — so the same `/effort` setting can render a different chip per model. `xhigh` exists only on Opus 4.7+ and Fable; models without an effort parameter render no chip.
 
 | Model | `low` | `medium` | `high` | `xhigh` | `max` |
 |---|---|---|---|---|---|
-| Fable 5 | `▰▱▱` | `▰▰▱` | `▰▰▰` | `▰▰▰ ✦` | `▰▰▰ ⚡` |
-| Opus 4.8 / 4.7 | `▰▱▱` | `▰▰▱` | `▰▰▰` | `▰▰▰ ✦` | `▰▰▰ ⚡` |
-| Opus 4.6 | `▰▱▱` | `▰▰▱` | `▰▰▰` | `▰▰▰` ¹ | `▰▰▰ ⚡` |
-| Sonnet 4.6 | `▰▱▱` | `▰▰▱` | `▰▰▰` | `▰▰▰` ¹ | `▰▰▰ ⚡` ² |
+| Fable 5 | `low` | `med` | `high` | `xhigh` | `max` |
+| Opus 4.8 / 4.7 | `low` | `med` | `high` | `xhigh` | `max` |
+| Opus 4.6 | `low` | `med` | `high` | `high` ¹ | `max` |
+| Sonnet 4.6 | `low` | `med` | `high` | `high` ¹ | `max` ² |
 | Haiku 4.5 / Sonnet 4.5 | — | — | — | — | — |
 
 ¹ `xhigh` isn't supported below Opus 4.7, so Claude Code runs it as `high`.
@@ -107,7 +108,7 @@ Set it to `0` to disable the cap and always use the full terminal width. Long di
 
 ## Layout
 
-**Git directories** — two-line layout. Model and effort bars on the first line, directory and branch info below the separator.
+**Git directories** — two-line layout. Model and effort chip on the first line, directory and branch info below the separator.
 
 ![git layout](assets/demo-git-effort.jpeg)
 
