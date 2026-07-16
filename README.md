@@ -61,23 +61,23 @@ Add to `~/.claude/settings.json`:
 
 ### Effort level
 
-The effort chip reflects Claude Code's **live** reasoning-effort level for the current session — whatever `/effort` is set to, already clamped by Claude Code to what the active model supports. The status line reads this from the session payload (`effort.level`) and renders it verbatim; it does **not** read effort from `settings.json` and does not re-clamp. A model with no effort parameter (Haiku, Sonnet 4.5) shows no effort chip at all.
+The effort level reflects Claude Code's **live** reasoning-effort level for the current session — whatever `/effort` is set to, already clamped by Claude Code to what the active model supports. The status line reads this from the session payload (`effort.level`) and renders it verbatim; it does **not** read effort from `settings.json` and does not re-clamp. A model with no effort parameter (Haiku, Sonnet 4.5) shows no effort segment at all.
 
-The level appears as a small chip right after the model pill — the level word on a neutral slate background, colored on a green → red scale so higher effort reads hotter at a glance:
+The effort joins onto the model pill as a second segment — split off by a thin divider on the seam — with the level word on a neutral slate background, colored on a green → red scale so higher effort reads hotter at a glance:
 
 ```
- opus  low      →  green
- opus  med      →  yellow-green
- opus  high     →  amber
- opus  xhigh    →  orange
- opus  max      →  red
+ opus ▕ low      →  green
+ opus ▕ med      →  yellow-green
+ opus ▕ high     →  amber
+ opus ▕ xhigh    →  orange
+ opus ▕ max      →  red
 ```
 
 The literal word always names the level, so the color is a redundant cue — it never stands alone, which keeps it legible under red-green color vision deficiency. The `/effort` slash command sets the effort for the current session.
 
 #### What each model renders
 
-Claude Code clamps the level you pick **down** to the highest one the active model supports, then sends that effective value — so the same `/effort` setting can render a different chip per model. `xhigh` exists only on Opus 4.7+ and Fable; models without an effort parameter render no chip.
+Claude Code clamps the level you pick **down** to the highest one the active model supports, then sends that effective value — so the same `/effort` setting can render a different label per model. `xhigh` exists only on Opus 4.7+ and Fable; models without an effort parameter render no effort segment.
 
 | Model | `low` | `medium` | `high` | `xhigh` | `max` |
 |---|---|---|---|---|---|
@@ -108,7 +108,7 @@ Set it to `0` to disable the cap and always use the full terminal width. Long di
 
 ## Layout
 
-**Git directories** — two-line layout. Model and effort chip on the first line, directory and branch info below the separator.
+**Git directories** — two-line layout. Model pill (with its effort segment) on the first line, directory and branch info below the separator.
 
 ![git layout](assets/demo-git-effort.jpeg)
 
