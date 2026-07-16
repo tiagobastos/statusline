@@ -48,13 +48,15 @@ const (
 	fgWinAmber = "\033[38;2;230;175;80m"
 	fgWinRed   = "\033[38;2;255;120;80m"
 
-	// Effort chip: the level word sits on a neutral slate chip, colored on a
+	// Effort segment: the level word occupies a slate-backed segment joined onto the
+	// right of the model pill, separated by a thin divider. It is colored on a
 	// green → red scale (low = green, max = red) so the effort magnitude reads at a
 	// glance. The slate is light enough to stay visible on dark terminals. The
 	// literal word always carries the meaning, so the color is a redundant cue that
 	// never stands alone — which also keeps it legible for red-green color vision
 	// deficiency.
-	bgChip = "\033[48;2;80;88;105m"
+	bgChip    = "\033[48;2;80;88;105m"
+	fgDivider = "\033[38;2;150;150;160m" // thin bar between the model and effort segments
 
 	fgEffortLow   = "\033[38;2;120;200;120m"
 	fgEffortMed   = "\033[38;2;190;205;95m"
@@ -660,10 +662,37 @@ func pill(bg, content string) string {
 }
 
 // pillFg renders a pill with a caller-chosen foreground color instead of the
-// default white. The effort chip uses it so its label color can encode the level.
+// default white. Used where a segment's text color must differ from white.
 func pillFg(bg, fg, content string) string {
-	fgCap := strings.Replace(bg, "48;", "38;", 1)
+	fgCap := bgToFg(bg)
 	return fgCap + capLeft + bg + fg + bold + " " + content + " " + rst + fgCap + capRight + rst
+}
+
+// bgToFg turns a truecolor background SGR into the matching foreground SGR, so a
+// powerline cap can be drawn in a segment's fill color.
+func bgToFg(bg string) string { return strings.Replace(bg, "48;", "38;", 1) }
+
+// buildModelPill renders the model name and, when an effort level applies, joins
+// the effort onto the same pill as a second slate-backed segment split off by a
+// thin divider — one connected pill (rounded caps only on the outer ends) rather
+// than two. Without effort it is just the plain model pill.
+func buildModelPill(modelBg, modelName, effort string) string {
+	var b strings.Builder
+	b.WriteString(bgToFg(modelBg) + capLeft)                  // outer-left cap, model color
+	b.WriteString(modelBg + fgWhite + bold + " " + modelName) // model label, one leading space
+
+	if fg, label := effortLabel(effort); label != "" {
+		// The divider sits on the seam (a thin bar at the right edge of the model
+		// cell). The model label carries no trailing space — the divider cell itself
+		// supplies the gap — and the effort label gets one space on each side, so each
+		// label reads centered between its outer cap and the divider.
+		b.WriteString(fgDivider + "▕")                        // divider on the model→effort seam
+		b.WriteString(bgChip + fg + bold + " " + label + " ") // effort label, centered
+		b.WriteString(rst + bgToFg(bgChip) + capRight + rst)  // outer-right cap, slate color
+		return b.String()
+	}
+	b.WriteString(" " + rst + bgToFg(modelBg) + capRight + rst) // trailing space + outer-right cap, model color
+	return b.String()
 }
 
 // visibleLen returns the number of terminal columns a string occupies, after
@@ -740,28 +769,24 @@ func buildBars(targetW, leftPillsLen, totalFixed, windowPct, ctxPct int, winBarC
 	return b.String()
 }
 
-// buildEffortChip renders the reasoning-effort level as a standalone pill sitting
-// after the model pill. The level word is drawn in a green → red color (low = green,
-// max = red) on the neutral slate chip, encoding the effort magnitude at a glance.
-// Returns "" when no effort applies (a model without an effort knob), so the caller
-// omits the chip.
-func buildEffortChip(effort string) string {
-	var fg, label string
+// effortLabel maps a normalized effort level to its green→red foreground color and
+// short lowercase label. Returns ("", "") when no effort applies (a model without
+// an effort knob), so buildModelPill omits the effort segment entirely.
+func effortLabel(effort string) (fg, label string) {
 	switch effort {
 	case "low":
-		fg, label = fgEffortLow, "low"
+		return fgEffortLow, "low"
 	case "medium":
-		fg, label = fgEffortMed, "med"
+		return fgEffortMed, "med"
 	case "high":
-		fg, label = fgEffortHigh, "high"
+		return fgEffortHigh, "high"
 	case "xhigh":
-		fg, label = fgEffortXHigh, "xhigh"
+		return fgEffortXHigh, "xhigh"
 	case "maximum":
-		fg, label = fgEffortMax, "max"
+		return fgEffortMax, "max"
 	default:
-		return "" // no effort chip (e.g. a model without effort support)
+		return "", ""
 	}
-	return pillFg(bgChip, fg, label)
 }
 
 func stripTrailingVersion(s string) string {
@@ -815,10 +840,7 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 	modelShort = strings.ToLower(modelShort)
 
 	modelBg := modelPillBg(modelName)
-	modelCluster := pill(modelBg, modelShort)
-	if chip := buildEffortChip(effort); chip != "" {
-		modelCluster += " " + chip
-	}
+	modelCluster := buildModelPill(modelBg, modelShort, effort)
 
 	winBarColor := fgWinGreen
 	if win.Pct >= 75 {

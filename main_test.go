@@ -154,32 +154,49 @@ func TestEffortFromPayload(t *testing.T) {
 	}
 }
 
-// TestBuildEffortChipNoEffort verifies an empty level renders nothing (a model
-// without effort support shows no effort chip, not a phantom "medium"), while
-// every real level renders a chip containing its uppercase label.
-func TestBuildEffortChipNoEffort(t *testing.T) {
-	if got := buildEffortChip(""); got != "" {
-		t.Errorf(`buildEffortChip("") = %q, want empty`, got)
+// TestBuildModelPill verifies the merged model+effort pill: with no effort it is a
+// plain model pill (no divider, no level word — a model without an effort knob must
+// not get a phantom "medium"); with a level it appends the effort as a
+// divider-separated segment carrying the short lowercase label.
+func TestBuildModelPill(t *testing.T) {
+	if fg, label := effortLabel(""); fg != "" || label != "" {
+		t.Errorf(`effortLabel("") = (%q,%q), want empty`, fg, label)
 	}
 	want := map[string]string{
 		"low": "low", "medium": "med", "high": "high", "xhigh": "xhigh", "maximum": "max",
 	}
 	for lvl, label := range want {
-		got := buildEffortChip(lvl)
-		if got == "" {
-			t.Errorf("buildEffortChip(%q) is empty, want a chip", lvl)
+		if _, got := effortLabel(lvl); got != label {
+			t.Errorf("effortLabel(%q) label = %q, want %q", lvl, got, label)
 		}
-		if !strings.Contains(ansiRe.ReplaceAllString(got, ""), label) {
-			t.Errorf("buildEffortChip(%q) missing label %q: %q", lvl, label,
-				ansiRe.ReplaceAllString(got, ""))
+	}
+
+	modelBg := modelPillBg("Claude Sonnet 4.6")
+
+	// No effort → plain pill: no divider, no level word.
+	plain := ansiRe.ReplaceAllString(buildModelPill(modelBg, "sonnet", ""), "")
+	if strings.Contains(plain, "│") {
+		t.Errorf("no-effort model pill has a divider: %q", plain)
+	}
+	for _, label := range []string{"low", "med", "high", "xhigh", "max"} {
+		if strings.Contains(plain, label) {
+			t.Errorf("no-effort model pill contains effort label %q: %q", label, plain)
+		}
+	}
+
+	// With effort → one pill carrying model name, divider, and the level word.
+	merged := ansiRe.ReplaceAllString(buildModelPill(modelBg, "sonnet", "high"), "")
+	for _, w := range []string{"sonnet", "▕", "high"} {
+		if !strings.Contains(merged, w) {
+			t.Errorf("merged pill missing %q: %q", w, merged)
 		}
 	}
 }
 
-// TestRenderNoEffortSegment verifies renderStatusLine omits the effort chip when
-// no effort applies — the uppercase level labels are effort-only, so their absence
-// proves the chip (and its leading space) was dropped rather than defaulted to
-// medium. A "high" render is checked as the positive control.
+// TestRenderNoEffortSegment verifies renderStatusLine omits the effort segment when
+// no effort applies — the lowercase level labels are effort-only, so their absence
+// proves the segment (and its divider) was dropped rather than defaulted to medium.
+// A "high" render is checked as the positive control.
 func TestRenderNoEffortSegment(t *testing.T) {
 	t.Setenv("COLUMNS", "120")
 	render := func(effort, model string) string {
