@@ -3,3 +3,4 @@ preview/
 docs/plans/
 dist/
 .DS_Store
+.worktrees/
