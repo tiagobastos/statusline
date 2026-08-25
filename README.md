@@ -61,33 +61,37 @@ Add to `~/.claude/settings.json`:
 
 ### Effort level
 
-The effort level reflects Claude Code's **live** reasoning-effort level for the current session — whatever `/effort` is set to, already clamped by Claude Code to what the active model supports. The status line reads this from the session payload (`effort.level`) and renders it verbatim; it does **not** read effort from `settings.json` and does not re-clamp. A model with no effort parameter (Haiku, Sonnet 4.5) shows no effort segment at all.
+The effort level reflects Claude Code's **live** reasoning-effort level for the current session — whatever `/effort` is set to, already clamped by Claude Code to what the active model supports. The status line reads this from the session payload (`effort.level`) and renders it verbatim; it does **not** read effort from `settings.json` and does not re-clamp. A model with no effort parameter (Haiku, Sonnet 4.5) shows no gauge at all.
 
-The effort joins onto the model pill as a second segment — split off by a thin divider on the seam — with the level word on a neutral slate background, colored on a green → red scale so higher effort reads hotter at a glance:
+Effort renders as a five-slot dot gauge, one space right of the model pill. Filled slots count out the level, and they are colored on a green → red scale so higher effort reads hotter at a glance:
 
 ```
- opus ▕ low      →  green
- opus ▕ med      →  yellow-green
- opus ▕ high     →  amber
- opus ▕ xhigh    →  orange
- opus ▕ max      →  red
+ opus  ●○○○○     low       green
+ opus  ●●○○○     medium    yellow-green
+ opus  ●●●○○     high      amber
+ opus  ●●●●○     xhigh     orange
+ opus  ●●●●●     maximum   red
 ```
 
-The literal word always names the level, so the color is a redundant cue — it never stands alone, which keeps it legible under red-green color vision deficiency. The `/effort` slash command sets the effort for the current session.
+Every filled dot in a row shares one hue — the hue belongs to the level, not to the slot, so the gauge never reads as a gradient.
+
+The count is the cue that carries the level: five discrete slots read as "3 of 5" with no color involved, so the hue is a redundant second cue rather than the only one, which is what keeps the gauge legible under red-green color vision deficiency. What the gauge deliberately does not show is the level's *name* — you can see which rung you are on, not that rung 4 is called `xhigh`. The `/effort` slash command sets the effort for the current session.
+
+Dots rather than a bar, because the context and rate-limit gauges beside it measure something different in kind. Those two deplete on their own, so a partial fill there means "this much consumed". Effort is a level you picked and it does not move, so it gets discrete slots instead — keeping two unlike readings from looking like the same one.
 
 #### What each model renders
 
-Claude Code clamps the level you pick **down** to the highest one the active model supports, then sends that effective value — so the same `/effort` setting can render a different label per model. `xhigh` exists only on Opus 4.7+ and Fable; models without an effort parameter render no effort segment.
+Claude Code clamps the level you pick **down** to the highest one the active model supports, then sends that effective value — so the same `/effort` setting can render a different dot count per model. `xhigh` exists only on Opus 4.7+ and Fable; models without an effort parameter render no gauge.
 
 | Model | `low` | `medium` | `high` | `xhigh` | `max` |
 |---|---|---|---|---|---|
-| Fable 5 | `low` | `med` | `high` | `xhigh` | `max` |
-| Opus 4.8 / 4.7 | `low` | `med` | `high` | `xhigh` | `max` |
-| Opus 4.6 | `low` | `med` | `high` | `high` ¹ | `max` |
-| Sonnet 4.6 | `low` | `med` | `high` | `high` ¹ | `max` ² |
+| Fable 5 | `●○○○○` | `●●○○○` | `●●●○○` | `●●●●○` | `●●●●●` |
+| Opus 4.8 / 4.7 | `●○○○○` | `●●○○○` | `●●●○○` | `●●●●○` | `●●●●●` |
+| Opus 4.6 | `●○○○○` | `●●○○○` | `●●●○○` | `●●●○○` ¹ | `●●●●●` |
+| Sonnet 4.6 | `●○○○○` | `●●○○○` | `●●●○○` | `●●●○○` ¹ | `●●●●●` ² |
 | Haiku 4.5 / Sonnet 4.5 | — | — | — | — | — |
 
-¹ `xhigh` isn't supported below Opus 4.7, so Claude Code runs it as `high`.
+¹ `xhigh` isn't supported below Opus 4.7, so Claude Code runs it as `high` — four slots' worth of intent renders as three.
 ² Sonnet 4.6 + `max` support is unconfirmed in the docs; if unsupported it clamps to `high`.
 
 ### Width
@@ -108,7 +112,7 @@ Set it to `0` to disable the cap and always use the full terminal width. Long di
 
 ## Layout
 
-**Git directories** — two-line layout. Model pill (with its effort segment) on the first line, directory and branch info below the separator.
+**Git directories** — two-line layout. Model pill and effort gauge on the first line, directory and branch info below the separator.
 
 ![git layout](assets/demo-git-effort.jpeg)
 

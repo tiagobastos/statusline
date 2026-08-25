@@ -14,7 +14,7 @@ import (
 //
 // The target environment was measured directly with a cursor-position probe
 // (DSR ESC[6n): every glyph the statusline uses renders as a single column —
-// the Nerd Font powerline caps, the ctx circles, the effort chip label,
+// the Nerd Font powerline caps, the ctx circles, the effort gauge dots,
 // the vertical ellipsis, the pill icons. Only genuine East Asian Wide code
 // points (e.g. CJK) occupy two columns. visibleLen must reflect that, because
 // over-counting shrinks the bars (right-edge gap) and under-counting wraps the
@@ -26,6 +26,7 @@ func TestVisibleLenSingleWidth(t *testing.T) {
 		want int
 	}{
 		{"ctx icons", "●◑◕◔", 4},
+		{"effort gauge dots", "●●●○○", 5},
 		{"bar separator", "⋮", 1},
 		{"pill icons", "⏱✎", 2},
 		{"powerline caps", "", 2},
@@ -154,50 +155,56 @@ func TestEffortFromPayload(t *testing.T) {
 	}
 }
 
-// TestBuildModelPill verifies the merged model+effort pill: with no effort it is a
-// plain model pill (no divider, no level word — a model without an effort knob must
-// not get a phantom "medium"); with a level it appends the effort as a
-// divider-separated segment carrying the short lowercase label.
-func TestBuildModelPill(t *testing.T) {
-	if fg, label := effortLabel(""); fg != "" || label != "" {
-		t.Errorf(`effortLabel("") = (%q,%q), want empty`, fg, label)
-	}
-	want := map[string]string{
-		"low": "low", "medium": "med", "high": "high", "xhigh": "xhigh", "maximum": "max",
-	}
-	for lvl, label := range want {
-		if _, got := effortLabel(lvl); got != label {
-			t.Errorf("effortLabel(%q) label = %q, want %q", lvl, got, label)
-		}
-	}
-
+// TestBuildModelCluster verifies the model pill plus its effort dot gauge. The
+// gauge is five slots wide at every level — filled slots count out the level,
+// empty ones state the denominator — and carries no level word, so the count and
+// hue are the only cues. With no effort the gauge is absent entirely rather than
+// drawn all-empty, since an all-empty gauge would read as "level 0 of 5" for a
+// model that has no effort scale at all.
+func TestBuildModelCluster(t *testing.T) {
 	modelBg := modelPillBg("Claude Sonnet 4.6")
 
-	// No effort → plain pill: no divider, no level word.
-	plain := ansiRe.ReplaceAllString(buildModelPill(modelBg, "sonnet", ""), "")
-	if strings.Contains(plain, "│") {
-		t.Errorf("no-effort model pill has a divider: %q", plain)
+	// No effort → the pill alone: no gauge, and none of the old pill's seam divider.
+	plain := ansiRe.ReplaceAllString(buildModelCluster(modelBg, "sonnet", ""), "")
+	if strings.ContainsAny(plain, "●○") {
+		t.Errorf("no-effort cluster drew a gauge: %q", plain)
 	}
-	for _, label := range []string{"low", "med", "high", "xhigh", "max"} {
-		if strings.Contains(plain, label) {
-			t.Errorf("no-effort model pill contains effort label %q: %q", label, plain)
-		}
+	if strings.Contains(plain, "▕") {
+		t.Errorf("no-effort cluster still has the effort seam divider: %q", plain)
+	}
+	if !strings.Contains(plain, "sonnet") {
+		t.Errorf("no-effort cluster lost the model name: %q", plain)
 	}
 
-	// With effort → one pill carrying model name, divider, and the level word.
-	merged := ansiRe.ReplaceAllString(buildModelPill(modelBg, "sonnet", "high"), "")
-	for _, w := range []string{"sonnet", "▕", "high"} {
-		if !strings.Contains(merged, w) {
-			t.Errorf("merged pill missing %q: %q", w, merged)
+	for lvl, filled := range map[string]int{"low": 1, "medium": 2, "high": 3, "xhigh": 4, "maximum": 5} {
+		got := ansiRe.ReplaceAllString(buildModelCluster(modelBg, "sonnet", lvl), "")
+
+		if !strings.Contains(got, "sonnet") {
+			t.Errorf("%s cluster lost the model name: %q", lvl, got)
+		}
+		if n := strings.Count(got, "●"); n != filled {
+			t.Errorf("%s cluster has %d filled dots, want %d: %q", lvl, n, filled, got)
+		}
+		if n := strings.Count(got, "○"); n != 5-filled {
+			t.Errorf("%s cluster has %d empty dots, want %d: %q", lvl, n, 5-filled, got)
+		}
+		// The gauge replaced the level word; none of the old labels may survive.
+		for _, word := range []string{"low", "med", "high", "xhigh", "max"} {
+			if strings.Contains(got, word) {
+				t.Errorf("%s cluster still carries the level word %q: %q", lvl, word, got)
+			}
 		}
 	}
 }
 
-// TestRenderNoEffortSegment verifies renderStatusLine omits the effort segment when
-// no effort applies — the lowercase level labels are effort-only, so their absence
-// proves the segment (and its divider) was dropped rather than defaulted to medium.
-// A "high" render is checked as the positive control.
-func TestRenderNoEffortSegment(t *testing.T) {
+// TestRenderNoEffortGauge verifies renderStatusLine omits the dot gauge when no
+// effort applies, rather than defaulting to a level or drawing an all-empty gauge.
+//
+// The dot count is asserted against the whole rendered line, which is only safe
+// because the window and context gauges pick "●" as their own icon at >= 75%.
+// Both fixtures here sit at 20%, where those icons are "⧉" and "◔", so every "●"
+// in the line belongs to the effort gauge. Do not raise these percentages.
+func TestRenderNoEffortGauge(t *testing.T) {
 	t.Setenv("COLUMNS", "120")
 	render := func(effort, model string) string {
 		return ansiRe.ReplaceAllString(captureStdout(func() {
@@ -207,13 +214,50 @@ func TestRenderNoEffortSegment(t *testing.T) {
 	}
 
 	noEffort := render("", "Claude Haiku 4.5")
-	for _, label := range []string{"low", "med", "high", "xhigh", "max"} {
-		if strings.Contains(noEffort, label) {
-			t.Errorf("no-effort render contains effort label %q: %q", label, noEffort)
+	if strings.ContainsAny(noEffort, "●○") {
+		t.Errorf("no-effort render drew an effort gauge: %q", noEffort)
+	}
+
+	withEffort := render("high", "Claude Opus 4.8")
+	if n := strings.Count(withEffort, "●"); n != 3 {
+		t.Errorf("high render has %d filled dots, want 3: %q", n, withEffort)
+	}
+	if n := strings.Count(withEffort, "○"); n != 2 {
+		t.Errorf("high render has %d empty dots, want 2: %q", n, withEffort)
+	}
+}
+
+// TestEffortDots pins the level → (hue, filled-slot count) mapping the dot gauge
+// renders from. The count is what carries the level: five discrete slots let a
+// reader take "3 of 5" off the gauge without resolving the hue at all, so the
+// green→red hue is a redundant cue rather than the only one — which is what keeps
+// the gauge legible under red-green color vision deficiency now that no level word
+// accompanies it. A model with no effort knob must map to zero slots rather than a
+// default, or Haiku would render a phantom "medium".
+func TestEffortDots(t *testing.T) {
+	if fg, filled := effortDots(""); fg != "" || filled != 0 {
+		t.Errorf(`effortDots("") = (%q,%d), want ("",0)`, fg, filled)
+	}
+
+	want := map[string]int{"low": 1, "medium": 2, "high": 3, "xhigh": 4, "maximum": 5}
+	for lvl, n := range want {
+		fg, got := effortDots(lvl)
+		if got != n {
+			t.Errorf("effortDots(%q) filled = %d, want %d", lvl, got, n)
+		}
+		if fg == "" {
+			t.Errorf("effortDots(%q) returned no color", lvl)
 		}
 	}
 
-	if withEffort := render("high", "Claude Opus 4.8"); !strings.Contains(withEffort, "high") {
-		t.Errorf("high-effort render missing high chip: %q", withEffort)
+	// Two levels sharing a hue would make the hue ambiguous, leaving the count as
+	// the only cue instead of a redundant second one.
+	seen := make(map[string]string, len(want))
+	for lvl := range want {
+		fg, _ := effortDots(lvl)
+		if prev, dup := seen[fg]; dup {
+			t.Errorf("effortDots(%q) reuses the color of effortDots(%q)", lvl, prev)
+		}
+		seen[fg] = lvl
 	}
 }
