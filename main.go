@@ -48,15 +48,13 @@ const (
 	fgWinAmber = "\033[38;2;230;175;80m"
 	fgWinRed   = "\033[38;2;255;120;80m"
 
-	// Effort segment: the level word occupies a slate-backed segment joined onto the
-	// right of the model pill, separated by a thin divider. It is colored on a
-	// green → red scale (low = green, max = red) so the effort magnitude reads at a
-	// glance. The slate is light enough to stay visible on dark terminals. The
-	// literal word always carries the meaning, so the color is a redundant cue that
-	// never stands alone — which also keeps it legible for red-green color vision
-	// deficiency.
-	bgChip    = "\033[48;2;80;88;105m"
-	fgDivider = "\033[38;2;150;150;160m" // thin bar between the model and effort segments
+	// Effort gauge: a five-slot dot gauge sitting one space right of the model pill.
+	// Filled slots count out the level and are colored on a green → red scale
+	// (low = green, max = red) so magnitude reads before the count is even taken.
+	// The count is the load-bearing cue and the hue is the redundant one, which is
+	// what keeps the gauge legible under red-green color vision deficiency without a
+	// level word present.
+	effortSlots = 5
 
 	fgEffortLow   = "\033[38;2;120;200;120m"
 	fgEffortMed   = "\033[38;2;190;205;95m"
@@ -672,32 +670,47 @@ func pillFg(bg, fg, content string) string {
 // powerline cap can be drawn in a segment's fill color.
 func bgToFg(bg string) string { return strings.Replace(bg, "48;", "38;", 1) }
 
-// buildModelPill renders the model name and, when an effort level applies, joins
-// the effort onto the same pill as a second slate-backed segment split off by a
-// thin divider — one connected pill (rounded caps only on the outer ends) rather
-// than two. Without effort it is just the plain model pill.
-func buildModelPill(modelBg, modelName, effort string) string {
-	var b strings.Builder
-	b.WriteString(bgToFg(modelBg) + capLeft)                  // outer-left cap, model color
-	b.WriteString(modelBg + fgWhite + bold + " " + modelName) // model label, one leading space
+// buildModelCluster renders the model pill and, when an effort level applies, a
+// five-slot dot gauge one space to its right. The pill stays filled because the
+// model is an identity, not a quantity; the gauge is unfilled glyphs because
+// effort is a quantity, which is the same split the context and reset gauges use.
+//
+// The gauge is deliberately not a continuous bar. Those two gauges show values
+// that deplete on their own, so a partial fill there means "this much consumed".
+// Effort is a level you chose and it does not move, so five discrete slots are
+// used instead: they read "3 of 5" rather than "60% gone".
+//
+// No level word accompanies it. That costs the level's *name* — the gauge shows
+// which rung you are on, not that rung 4 is called "xhigh" — but not the
+// redundancy that protects it, since the filled count identifies the level
+// independently of the hue.
+func buildModelCluster(modelBg, modelName, effort string) string {
+	pillOnly := pill(modelBg, modelName)
 
-	if fg, label := effortLabel(effort); label != "" {
-		// The divider sits on the seam (a thin bar at the right edge of the model
-		// cell). The model label carries no trailing space — the divider cell itself
-		// supplies the gap — and the effort label gets one space on each side, so each
-		// label reads centered between its outer cap and the divider.
-		b.WriteString(fgDivider + "▕")                        // divider on the model→effort seam
-		b.WriteString(bgChip + fg + bold + " " + label + " ") // effort label, centered
-		b.WriteString(rst + bgToFg(bgChip) + capRight + rst)  // outer-right cap, slate color
-		return b.String()
+	fg, filled := effortDots(effort)
+	if filled == 0 {
+		return pillOnly
 	}
-	b.WriteString(" " + rst + bgToFg(modelBg) + capRight + rst) // trailing space + outer-right cap, model color
+
+	var b strings.Builder
+	b.WriteString(pillOnly)
+	b.WriteString(" ") // single space: enough to clear the pill's rounded cap, tight enough to stay bound to it
+	for i := 0; i < effortSlots; i++ {
+		if i < filled {
+			b.WriteString(fg + "●" + rst)
+		} else {
+			// Empty slots state the denominator, and with no level word backing it up
+			// they are the only thing that does — so they stay hollow rather than
+			// receding to a dimmer glyph.
+			b.WriteString(fgDkGray + "○" + rst)
+		}
+	}
 	return b.String()
 }
 
 // visibleLen returns the number of terminal columns a string occupies, after
 // stripping ANSI color codes. The target terminal+font renders every glyph the
-// statusline uses (Nerd Font powerline caps, ctx circles, the effort chip label,
+// statusline uses (Nerd Font powerline caps, ctx circles, the effort gauge dots,
 // the vertical-ellipsis separator, pill icons) as a single column — verified
 // directly with a cursor-position probe (DSR ESC[6n) — so the column count is
 // just the rune count. Genuine East Asian Wide / Fullwidth code points (e.g.
@@ -769,23 +782,29 @@ func buildBars(targetW, leftPillsLen, totalFixed, windowPct, ctxPct int, winBarC
 	return b.String()
 }
 
-// effortLabel maps a normalized effort level to its green→red foreground color and
-// short lowercase label. Returns ("", "") when no effort applies (a model without
-// an effort knob), so buildModelPill omits the effort segment entirely.
-func effortLabel(effort string) (fg, label string) {
+// effortDots maps a normalized effort level onto the dot gauge: how many of the
+// five slots are filled, and the green→red hue they are filled in. Returns ("", 0)
+// when no effort applies (a model without an effort knob), so buildModelCluster
+// omits the gauge entirely rather than drawing an all-empty one.
+//
+// The two returns are deliberately redundant. The count alone identifies the level
+// — five discrete slots read as "3 of 5" with no color involved — so the hue adds
+// a second, faster cue without being load-bearing. Every level gets its own hue,
+// because two levels sharing one would collapse that redundancy.
+func effortDots(effort string) (fg string, filled int) {
 	switch effort {
 	case "low":
-		return fgEffortLow, "low"
+		return fgEffortLow, 1
 	case "medium":
-		return fgEffortMed, "med"
+		return fgEffortMed, 2
 	case "high":
-		return fgEffortHigh, "high"
+		return fgEffortHigh, 3
 	case "xhigh":
-		return fgEffortXHigh, "xhigh"
+		return fgEffortXHigh, 4
 	case "maximum":
-		return fgEffortMax, "max"
+		return fgEffortMax, 5
 	default:
-		return "", ""
+		return "", 0
 	}
 }
 
@@ -840,7 +859,7 @@ func renderStatusLine(gitInfo *GitInfo, win WindowInfo, ctxPct int, effort, mode
 	modelShort = strings.ToLower(modelShort)
 
 	modelBg := modelPillBg(modelName)
-	modelCluster := buildModelPill(modelBg, modelShort, effort)
+	modelCluster := buildModelCluster(modelBg, modelShort, effort)
 
 	winBarColor := fgWinGreen
 	if win.Pct >= 75 {
