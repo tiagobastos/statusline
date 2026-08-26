@@ -2,11 +2,17 @@ BINARY     = statusline
 DIST       = dist
 INSTALL    = $(HOME)/.claude/statusline/$(BINARY)
 
-.PHONY: demo local build tag release clean
+.PHONY: demo assets local build tag release clean
 
 # Run the demo in-place (no install)
 demo:
 	go run . --demo
+
+# Regenerate the README screenshots in assets/ from the current --demo output.
+# Needs python3 + Pillow, Google Chrome, and MesloLGS NF installed — see the
+# header of tools/gen-assets.py.
+assets:
+	python3 tools/gen-assets.py
 
 # Build and install locally, backing up the current binary first
 local:
